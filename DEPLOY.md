@@ -143,14 +143,30 @@ EOF
 
 ## 6. Build and start
 
+**Order matters here.** Several pages are prerendered at build time and fetch
+the API while building, so the API must already be running or the build dies
+with `ECONNREFUSED` on `/membership`. Start the API *first*:
+
 ```bash
 cd /var/www/wedding
+
+# 1. API first — the build depends on it
+pm2 start ecosystem.config.js --only wedding-api
+
+# 2. verify it answers before building
+curl -s http://127.0.0.1:4100/api/health
+
+# 3. now build the frontend
 npm --prefix web run build
 
-pm2 start ecosystem.config.js
+# 4. and start it
+pm2 start ecosystem.config.js --only wedding-web
+
 pm2 save
 pm2 startup     # run the command it prints, so PM2 survives reboot
 ```
+
+Step 2 must print `{"ok":true,...}` before you continue.
 
 Check both are up alongside your existing app:
 
@@ -185,7 +201,7 @@ sudo certbot --nginx -d wedding.peculiex.com
 Choose **redirect HTTP to HTTPS** when asked. Certbot edits the site file in
 place and sets up auto-renewal.
 
-Open **https://wedding.peculiex.com**.
+Open **[https://wedding.peculiex.com](https://wedding.peculiex.com)**.
 
 ---
 
@@ -209,12 +225,18 @@ cd /var/www/wedding
 git pull
 npm --prefix server install --omit=dev
 npm --prefix web install
+
+pm2 restart wedding-api          # API up first, the build needs it
 npm --prefix web run build
-pm2 restart wedding-api wedding-web
+pm2 restart wedding-web
 ```
 
-Always rebuild `web` after pulling — Next.js serves from `.next/`, so a restart
-alone ships the old bundle.
+Two things that bite here:
+
+- **Always rebuild `web` after pulling.** Next.js serves from `.next/`, so a
+  restart alone ships the old bundle.
+- **Never stop the API before building.** Same prerender dependency as the
+  first deploy — the build will fail with `ECONNREFUSED`.
 
 ---
 
