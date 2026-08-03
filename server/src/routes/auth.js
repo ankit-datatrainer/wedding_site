@@ -139,7 +139,19 @@ const updateMeSchema = z.object({
 
 router.patch('/me', requireAuth, async (req, res, next) => {
   try {
-    const parsed = updateMeSchema.safeParse(req.body);
+    // Unanswered <select>s submit as '' — several `details` fields are
+    // enums, so an empty string fails validation and the whole save (every
+    // other field the member did fill in) is rejected with it. Treat "not
+    // answered" the same as "not sent" here, once, for every caller —
+    // multi-step wizards, the edit-profile page, anything future.
+    const body = { ...req.body };
+    if (body.details && typeof body.details === 'object') {
+      body.details = Object.fromEntries(
+        Object.entries(body.details).filter(([, v]) => v !== '')
+      );
+    }
+
+    const parsed = updateMeSchema.safeParse(body);
     if (!parsed.success) {
       return res.status(400).json({ error: parsed.error.issues[0].message });
     }
