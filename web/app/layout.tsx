@@ -1,8 +1,7 @@
 import type { Metadata } from 'next';
 import { Libre_Caslon_Text, Plus_Jakarta_Sans } from 'next/font/google';
 import './globals.css';
-import { Header } from '@/components/Header';
-import { Footer } from '@/components/Footer';
+import { SiteChrome } from '@/components/SiteChrome';
 import { AuthProvider } from '@/lib/auth';
 
 const caslon = Libre_Caslon_Text({
@@ -39,9 +38,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         className="bg-surface font-body text-body-md text-on-surface antialiased"
       >
         <AuthProvider>
-          <Header />
-          <main className="w-full pt-[80px]">{children}</main>
-          <Footer />
+          <SiteChrome>{children}</SiteChrome>
         </AuthProvider>
       </body>
     </html>

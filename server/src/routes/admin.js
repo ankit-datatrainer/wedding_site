@@ -1,7 +1,22 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
-import { findUserByEmail, getUserById, listAllUsers, listUsers } from '../store.js';
+import {
+  adminListProfiles,
+  createProfile,
+  deleteProfile,
+  deleteSubscriber,
+  deleteUser,
+  findUserByEmail,
+  getAdminStats,
+  getUserById,
+  listActivity,
+  listAllUsers,
+  listOrders,
+  listSubscribers,
+  listUsers,
+  updateProfile,
+} from '../store.js';
 import { publicUser, requireAdmin, requireAuth, signToken } from '../auth.js';
 
 const router = Router();
@@ -59,6 +74,131 @@ router.get('/members/:id', async (req, res, next) => {
     const user = await getUserById(req.params.id);
     if (!user || user.role === 'admin') return res.status(404).json({ error: 'Member not found.' });
     res.json({ user: publicUser(user) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/members/:id', async (req, res, next) => {
+  try {
+    const target = await getUserById(req.params.id);
+    if (!target || target.role === 'admin') {
+      return res.status(404).json({ error: 'Member not found.' });
+    }
+    await deleteUser(req.params.id);
+    res.json({ deleted: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ------------------------------------------------------------- overview ---
+
+router.get('/stats', async (_req, res, next) => {
+  try {
+    res.json(await getAdminStats());
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/activity', async (req, res, next) => {
+  try {
+    res.json({ items: await listActivity(Number(req.query.limit) || 20) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ----------------------------------------------- directory profile CRUD ---
+
+const profileSchema = z.object({
+  name: z.string().min(1, 'Name is required.'),
+  age: z.coerce.number().int().min(18, 'Age must be 18 or over.').max(100),
+  gender: z.enum(['male', 'female']),
+  profession: z.string().optional().default(''),
+  location: z.string().optional().default(''),
+  education: z.string().optional().default(''),
+  education_level: z.enum(['Bachelors', 'Masters', 'Doctorate']).optional(),
+  religion: z.string().optional().default(''),
+  community: z.string().optional().default(''),
+  marital_status: z.enum(['Never Married', 'Divorced', 'Widowed']).optional(),
+  verified: z.coerce.boolean().optional(),
+  height_cm: z.coerce.number().int().min(120).max(230).optional(),
+  mother_tongue: z.string().optional().default(''),
+  diet: z.enum(['Vegetarian', 'Non-Vegetarian', 'Eggetarian', 'Vegan']).optional(),
+  photo: z.string().url('Photo must be a valid URL.').or(z.literal('')).optional(),
+  about: z.string().max(2000).optional().default(''),
+});
+
+router.get('/profiles', async (req, res, next) => {
+  try {
+    res.json(await adminListProfiles(req.query));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/profiles', async (req, res, next) => {
+  try {
+    const parsed = profileSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
+    const body = parsed.data;
+    // `city` powers the location filter on /browse; derive it so admin-created
+    // rows behave the same as the seeded ones.
+    const created = await createProfile({ ...body, city: (body.location || '').split(',')[0].trim() });
+    res.status(201).json(created);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.patch('/profiles/:id', async (req, res, next) => {
+  try {
+    const parsed = profileSchema.partial().safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
+    const patch = { ...parsed.data };
+    if (patch.location !== undefined) patch.city = patch.location.split(',')[0].trim();
+    const updated = await updateProfile(req.params.id, patch);
+    if (!updated) return res.status(404).json({ error: 'Profile not found.' });
+    res.json(updated);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/profiles/:id', async (req, res, next) => {
+  try {
+    const ok = await deleteProfile(req.params.id);
+    if (!ok) return res.status(404).json({ error: 'Profile not found.' });
+    res.json({ deleted: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ------------------------------------------------- payments & newsletter ---
+
+router.get('/orders', async (req, res, next) => {
+  try {
+    res.json(await listOrders(req.query));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/subscribers', async (_req, res, next) => {
+  try {
+    res.json({ items: await listSubscribers() });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/subscribers/:email', async (req, res, next) => {
+  try {
+    await deleteSubscriber(decodeURIComponent(req.params.email));
+    res.json({ deleted: true });
   } catch (err) {
     next(err);
   }

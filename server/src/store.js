@@ -605,4 +605,256 @@ export async function addSubscriber(email) {
   return row;
 }
 
+// ------------------------------------------------------------------ admin ---
+
+/** Counts for the admin overview. One pass, no per-card round trips. */
+export async function getAdminStats() {
+  const weekAgo = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString();
+
+  if (usingSupabase) {
+    const countOf = async (table, build = (q) => q) => {
+      const { count, error } = await build(
+        supabase.from(table).select('*', { count: 'exact', head: true })
+      );
+      if (error) throw error;
+      return count ?? 0;
+    };
+
+    const [
+      members, newMembers, premium, maleProfiles, femaleProfiles,
+      verifiedProfiles, shortlists, interests, paidOrders, subscribers,
+    ] = await Promise.all([
+      countOf('users', (q) => q.eq('role', 'member')),
+      countOf('users', (q) => q.eq('role', 'member').gte('created_at', weekAgo)),
+      countOf('users', (q) => q.eq('role', 'member').not('plan_id', 'is', null)),
+      countOf('profiles', (q) => q.eq('gender', 'male')),
+      countOf('profiles', (q) => q.eq('gender', 'female')),
+      countOf('profiles', (q) => q.eq('verified', true)),
+      countOf('shortlists'),
+      countOf('interests'),
+      countOf('orders', (q) => q.eq('status', 'paid')),
+      countOf('newsletter_subscribers'),
+    ]);
+
+    const { data: revenueRows, error: revErr } = await supabase
+      .from('orders')
+      .select('amount')
+      .eq('status', 'paid');
+    if (revErr) throw revErr;
+
+    return {
+      members, newMembers, premium,
+      profiles: maleProfiles + femaleProfiles,
+      maleProfiles, femaleProfiles, verifiedProfiles,
+      shortlists, interests, paidOrders, subscribers,
+      revenue: (revenueRows ?? []).reduce((sum, r) => sum + (r.amount || 0), 0),
+    };
+  }
+
+  const memberRows = mem.users.filter((u) => (u.role || 'member') === 'member');
+  const paid = mem.orders.filter((o) => o.status === 'paid');
+  return {
+    members: memberRows.length,
+    newMembers: memberRows.filter((u) => u.created_at >= weekAgo).length,
+    premium: memberRows.filter((u) => u.plan_id).length,
+    profiles: mem.profiles.length,
+    maleProfiles: mem.profiles.filter((p) => p.gender === 'male').length,
+    femaleProfiles: mem.profiles.filter((p) => p.gender === 'female').length,
+    verifiedProfiles: mem.profiles.filter((p) => p.verified).length,
+    shortlists: mem.shortlists.length,
+    interests: mem.interests.length,
+    paidOrders: paid.length,
+    subscribers: mem.subscribers.length,
+    revenue: paid.reduce((sum, o) => sum + (o.amount || 0), 0),
+  };
+}
+
+export async function deleteUser(id) {
+  if (usingSupabase) {
+    // Related shortlists/interests/orders go with it via ON DELETE CASCADE.
+    const { error } = await supabase.from('users').delete().eq('id', id).eq('role', 'member');
+    if (error) throw error;
+    return true;
+  }
+  const i = mem.users.findIndex((u) => u.id === id && (u.role || 'member') === 'member');
+  if (i < 0) return false;
+  mem.users.splice(i, 1);
+  mem.shortlists = mem.shortlists.filter((s) => s.user_id !== id);
+  mem.interests = mem.interests.filter((s) => s.user_id !== id);
+  mem.orders = mem.orders.filter((o) => o.user_id !== id);
+  return true;
+}
+
+/** Admin-side directory listing — same table the public /browse reads. */
+export async function adminListProfiles({ page = 1, pageSize = 20, search = '', gender = '' } = {}) {
+  const p = Math.max(1, Number(page) || 1);
+  const size = Math.min(100, Math.max(1, Number(pageSize) || 20));
+  const from = (p - 1) * size;
+
+  if (usingSupabase) {
+    let sb = supabase
+      .from('profiles')
+      .select('*', { count: 'exact' })
+      .order('created_at', { ascending: false });
+    if (gender) sb = sb.eq('gender', gender);
+    if (search) sb = sb.or(`name.ilike.%${search}%,profession.ilike.%${search}%,location.ilike.%${search}%`);
+    const { data, count, error } = await sb.range(from, from + size - 1);
+    if (error) throw error;
+    return { items: data ?? [], total: count ?? 0, page: p, pageSize: size };
+  }
+
+  let rows = mem.profiles;
+  if (gender) rows = rows.filter((r) => r.gender === gender);
+  if (search) {
+    const n = search.toLowerCase();
+    rows = rows.filter((r) => [r.name, r.profession, r.location].join(' ').toLowerCase().includes(n));
+  }
+  rows = [...rows].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  return { items: rows.slice(from, from + size), total: rows.length, page: p, pageSize: size };
+}
+
+export async function createProfile(profile) {
+  const row = {
+    id: profile.id || nextId('pr'),
+    created_at: new Date().toISOString(),
+    last_active_days: 0,
+    verified: false,
+    ...profile,
+  };
+  if (usingSupabase) {
+    const { data, error } = await supabase.from('profiles').insert(row).select().single();
+    if (error) throw error;
+    return data;
+  }
+  mem.profiles.unshift(row);
+  return row;
+}
+
+export async function updateProfile(id, patch) {
+  if (usingSupabase) {
+    const { data, error } = await supabase
+      .from('profiles')
+      .update(patch)
+      .eq('id', id)
+      .select()
+      .maybeSingle();
+    if (error) throw error;
+    return data;
+  }
+  const p = mem.profiles.find((x) => x.id === id);
+  if (!p) return null;
+  Object.assign(p, patch);
+  return p;
+}
+
+export async function deleteProfile(id) {
+  if (usingSupabase) {
+    const { error } = await supabase.from('profiles').delete().eq('id', id);
+    if (error) throw error;
+    return true;
+  }
+  const i = mem.profiles.findIndex((p) => p.id === id);
+  if (i < 0) return false;
+  mem.profiles.splice(i, 1);
+  mem.shortlists = mem.shortlists.filter((s) => s.profile_id !== id);
+  mem.interests = mem.interests.filter((s) => s.profile_id !== id);
+  return true;
+}
+
+/** Orders joined to the member who placed them. */
+export async function listOrders({ page = 1, pageSize = 25 } = {}) {
+  const p = Math.max(1, Number(page) || 1);
+  const size = Math.min(100, Math.max(1, Number(pageSize) || 25));
+  const from = (p - 1) * size;
+
+  if (usingSupabase) {
+    const { data, count, error } = await supabase
+      .from('orders')
+      .select('*, users(email, first_name, last_name)', { count: 'exact' })
+      .order('created_at', { ascending: false })
+      .range(from, from + size - 1);
+    if (error) throw error;
+    return { items: data ?? [], total: count ?? 0, page: p, pageSize: size };
+  }
+
+  const rows = [...mem.orders]
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+    .map((o) => {
+      const u = mem.users.find((x) => x.id === o.user_id);
+      return { ...o, users: u ? { email: u.email, first_name: u.first_name, last_name: u.last_name } : null };
+    });
+  return { items: rows.slice(from, from + size), total: rows.length, page: p, pageSize: size };
+}
+
+export async function listSubscribers() {
+  if (usingSupabase) {
+    const { data, error } = await supabase
+      .from('newsletter_subscribers')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return data ?? [];
+  }
+  return [...mem.subscribers].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+}
+
+export async function deleteSubscriber(email) {
+  if (usingSupabase) {
+    const { error } = await supabase.from('newsletter_subscribers').delete().eq('email', email);
+    if (error) throw error;
+    return true;
+  }
+  const i = mem.subscribers.findIndex((s) => s.email === email);
+  if (i >= 0) mem.subscribers.splice(i, 1);
+  return i >= 0;
+}
+
+/**
+ * Recent shortlist/interest events, newest first — the "who is doing what"
+ * feed on the admin overview.
+ */
+export async function listActivity(limit = 20) {
+  if (usingSupabase) {
+    const [sl, it] = await Promise.all([
+      supabase
+        .from('shortlists')
+        .select('created_at, users(email), profiles(name)')
+        .order('created_at', { ascending: false })
+        .limit(limit),
+      supabase
+        .from('interests')
+        .select('created_at, users(email), profiles(name)')
+        .order('created_at', { ascending: false })
+        .limit(limit),
+    ]);
+    if (sl.error) throw sl.error;
+    if (it.error) throw it.error;
+    const rows = [
+      ...(sl.data ?? []).map((r) => ({ kind: 'shortlist', ...r })),
+      ...(it.data ?? []).map((r) => ({ kind: 'interest', ...r })),
+    ];
+    return rows
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+      .slice(0, limit)
+      .map((r) => ({
+        kind: r.kind,
+        created_at: r.created_at,
+        email: r.users?.email ?? '—',
+        profile: r.profiles?.name ?? '—',
+      }));
+  }
+
+  const decorate = (rows, kind) =>
+    rows.map((r) => ({
+      kind,
+      created_at: r.created_at,
+      email: mem.users.find((u) => u.id === r.user_id)?.email ?? '—',
+      profile: mem.profiles.find((p) => p.id === r.profile_id)?.name ?? '—',
+    }));
+
+  return [...decorate(mem.shortlists, 'shortlist'), ...decorate(mem.interests, 'interest')]
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+    .slice(0, limit);
+}
+
 export const _mem = mem;
