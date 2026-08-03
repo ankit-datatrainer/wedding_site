@@ -48,10 +48,28 @@ app.use((err, _req, res, _next) => {
 async function start() {
   // Seeded before the server accepts traffic so /api/admin/login always has
   // an account to check against, even on a cold in-memory boot.
-  await ensureAdminSeeded({
-    email: config.admin.email,
-    passwordHash: await bcrypt.hash(config.admin.password, 10),
-  });
+  try {
+    await ensureAdminSeeded({
+      email: config.admin.email,
+      passwordHash: await bcrypt.hash(config.admin.password, 10),
+    });
+  } catch (err) {
+    // The overwhelmingly common cause is Supabase credentials pointing at a
+    // database where schema.sql was never applied. Say so plainly instead of
+    // dying on a PostgREST stack trace that means nothing to the reader.
+    const missingSchema = /schema cache|does not exist|relation .* does not exist/i.test(
+      err?.message || ''
+    );
+    console.error('\n[api] FATAL: could not seed the super-admin account.');
+    console.error(`[api] ${err?.message || err}`);
+    if (missingSchema && usingSupabase) {
+      console.error(
+        '\n[api] The Supabase project has no tables yet. Open the Supabase SQL editor\n' +
+          '[api] and run server/supabase/schema.sql, then start the API again.\n'
+      );
+    }
+    process.exit(1);
+  }
 
   app.listen(config.port, () => {
     console.log(`[api] EverAfter API listening on http://localhost:${config.port}`);

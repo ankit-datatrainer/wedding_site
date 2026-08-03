@@ -8,7 +8,9 @@
   "scripts": {
     "dev": "node --watch src/index.js",
     "start": "node src/index.js",
-    "seed": "node src/seed-supabase.js"
+    "seed": "node src/seed-supabase.js",
+    "gen:sql": "node src/generate-sql.js",
+    "verify": "node src/verify.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",
