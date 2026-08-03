@@ -16,20 +16,29 @@ export function StatCard({
   tone?: 'default' | 'accent';
 }) {
   return (
-    <div className="flex items-start gap-4 rounded-xl bg-surface p-5 shadow-card">
+    <div className="group relative flex items-start gap-4 overflow-hidden rounded-2xl bg-surface p-5 shadow-card transition-all hover:-translate-y-0.5 hover:shadow-float">
+      {tone === 'accent' && (
+        <span
+          aria-hidden
+          className="pointer-events-none absolute inset-0 opacity-[0.06]"
+          style={{ background: 'linear-gradient(135deg, #E85283, #2D0312)' }}
+        />
+      )}
       <span
-        className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${
-          tone === 'accent' ? 'bg-secondary text-on-secondary' : 'bg-secondary-container/20 text-secondary'
+        className={`relative flex h-12 w-12 shrink-0 items-center justify-center rounded-xl transition-transform group-hover:scale-105 ${
+          tone === 'accent'
+            ? 'bg-secondary text-on-secondary shadow-[0_6px_16px_-4px_rgba(232,82,131,0.55)]'
+            : 'bg-secondary-container/15 text-secondary'
         }`}
       >
         <Icon name={icon} className="text-[22px]" />
       </span>
-      <div className="min-w-0">
+      <div className="relative min-w-0">
         <p className="font-body text-label-md uppercase tracking-wide text-on-surface-variant">
           {label}
         </p>
-        <p className="font-heading text-[26px] leading-tight text-primary">{value}</p>
-        {sub && <p className="font-body text-label-md text-on-surface-variant">{sub}</p>}
+        <p className="mt-0.5 font-heading text-[27px] leading-tight text-primary">{value}</p>
+        {sub && <p className="mt-0.5 font-body text-label-md text-on-surface-variant">{sub}</p>}
       </div>
     </div>
   );
@@ -45,9 +54,9 @@ export function Panel({
   children: React.ReactNode;
 }) {
   return (
-    <section className="overflow-hidden rounded-xl bg-surface shadow-card">
+    <section className="overflow-hidden rounded-2xl bg-surface shadow-card">
       {(title || actions) && (
-        <header className="flex items-center justify-between gap-4 border-b border-outline-variant/30 px-5 py-4">
+        <header className="flex flex-wrap items-center justify-between gap-3 border-b border-outline-variant/30 px-5 py-4">
           {title && <h2 className="font-heading text-[18px] text-primary">{title}</h2>}
           {actions}
         </header>
