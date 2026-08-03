@@ -46,8 +46,27 @@ create table if not exists users (
   dob            date,
   profile_for    text,
   plan_id        text,
+  role           text not null default 'member' check (role in ('member','admin')),
+  phone          text,
+  photo_url      text,
+  -- Gallery (array of /uploads/... URLs) and the full matrimonial profile
+  -- (family, career, horoscope, about-me...) captured by the onboarding
+  -- wizard. jsonb rather than dozens of columns — the field set has grown
+  -- once already and will again; see server/src/routes/auth.js for the
+  -- current shape of `details`.
+  photos         jsonb not null default '[]'::jsonb,
+  details        jsonb not null default '{}'::jsonb,
   created_at     timestamptz not null default now()
 );
+
+-- Safe to re-run against a database created before these columns existed.
+alter table users add column if not exists role      text not null default 'member';
+alter table users add column if not exists phone      text;
+alter table users add column if not exists photo_url  text;
+alter table users add column if not exists photos     jsonb not null default '[]'::jsonb;
+alter table users add column if not exists details    jsonb not null default '{}'::jsonb;
+
+create index if not exists users_role_idx on users (role);
 
 create table if not exists shortlists (
   id          bigserial primary key,

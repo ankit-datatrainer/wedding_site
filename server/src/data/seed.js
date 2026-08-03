@@ -59,7 +59,7 @@ const bios = [
   'I value honesty above almost everything. Looking for a companion for the long walk, not just the wedding photographs.',
 ];
 
-export const profiles = raw.map((r, i) => {
+const original = raw.map((r, i) => {
   const [name, age, gender, profession, location, education, educationLevel, religion, community, maritalStatus, verified] = r;
   return {
     id: `p${i + 1}`,
@@ -84,6 +84,96 @@ export const profiles = raw.map((r, i) => {
     created_at: new Date(Date.now() - i * 36e5 * 9).toISOString(),
   };
 });
+
+// 20 male + 20 female additions so the matching algorithm (server/src/store.js
+// #getMatches) has a real pool of opposite-gender candidates to rank for
+// every viewer, not just the original 24 mixed-gender design-screen profiles.
+// Photos are randomuser.me's static "dummy user" portrait set — a service
+// built specifically for placeholder profile photos in exactly this kind of
+// seed data, not real individuals' photos or AI-generated likenesses.
+const dummyMalePhoto = (n) => `https://randomuser.me/api/portraits/men/${n}.jpg`;
+const dummyFemalePhoto = (n) => `https://randomuser.me/api/portraits/women/${n}.jpg`;
+
+const rawMale = [
+  ['Ravi Kumar', 29, 'Software Developer', 'Bengaluru, Karnataka', 'B.Tech, IIIT Bangalore', 'Bachelors', 'Hindu', 'Reddy', 'Never Married', true, 1],
+  ['Amitabh Chauhan', 32, 'Bank Manager', 'Lucknow, Uttar Pradesh', 'MBA, IIM Lucknow', 'Masters', 'Hindu', 'Rajput', 'Never Married', true, 2],
+  ['Suresh Pillai', 34, 'Marine Engineer', 'Kochi, Kerala', 'B.Tech, CUSAT', 'Bachelors', 'Hindu', 'Nair', 'Divorced', false, 3],
+  ['Farhan Ahmed', 28, 'Graphic Designer', 'Hyderabad, Telangana', 'B.Des, NID', 'Bachelors', 'Muslim', 'Sunni', 'Never Married', true, 4],
+  ['Gurpreet Singh', 31, 'Restaurateur', 'Amritsar, Punjab', 'B.Com, GNDU', 'Bachelors', 'Sikh', 'Jat', 'Never Married', true, 5],
+  ['Anand Krishnan', 27, 'Data Analyst', 'Chennai, Tamil Nadu', 'M.Sc Statistics, Loyola', 'Masters', 'Hindu', 'Iyengar', 'Never Married', false, 6],
+  ['Vivek Oberoi', 33, 'Hotel General Manager', 'Goa', 'BHM, IHM Goa', 'Bachelors', 'Hindu', 'Khatri', 'Never Married', true, 7],
+  ['Manoj Tiwari', 36, 'Government Officer', 'Patna, Bihar', 'MA Public Admin, Patna University', 'Masters', 'Hindu', 'Brahmin', 'Widowed', false, 8],
+  ['Rohit Bhatia', 30, 'Mechanical Engineer', 'Ludhiana, Punjab', 'B.Tech, PEC', 'Bachelors', 'Hindu', 'Khatri', 'Never Married', true, 9],
+  ['Shantanu Ghosh', 29, 'Film Editor', 'Kolkata, West Bengal', 'B.Sc, Satyajit Ray Institute', 'Bachelors', 'Hindu', 'Kayastha', 'Never Married', true, 10],
+  ['Irfan Sheikh', 35, 'Import-Export Trader', 'Surat, Gujarat', 'B.Com, VNSGU', 'Bachelors', 'Muslim', 'Sunni', 'Divorced', true, 11],
+  ['Nikhil Wadhwa', 26, 'UI/UX Designer', 'Gurugram, Haryana', 'B.Des, MIT Institute of Design', 'Bachelors', 'Hindu', 'Arora', 'Never Married', false, 12],
+  ['Thomas Kutty', 32, 'Physiotherapist', 'Thiruvananthapuram, Kerala', 'BPT, Kerala University', 'Bachelors', 'Christian', 'Syro-Malabar', 'Never Married', true, 13],
+  ['Yash Agnihotri', 28, 'Startup Founder', 'Indore, Madhya Pradesh', 'B.Tech, IIT Indore', 'Bachelors', 'Hindu', 'Brahmin', 'Never Married', true, 14],
+  ['Devendra Solanki', 33, 'Civil Services Officer', 'Jaipur, Rajasthan', 'MA Economics, DU', 'Masters', 'Hindu', 'Rajput', 'Never Married', true, 15],
+  ['Aakash Chopra', 30, 'Sports Physiotherapist', 'Mohali, Punjab', 'BPT, PGIMER', 'Bachelors', 'Hindu', 'Khatri', 'Never Married', false, 16],
+  ['Basil George', 31, 'Merchant Navy Officer', 'Kochi, Kerala', 'B.Tech Marine, AMET', 'Bachelors', 'Christian', 'Catholic', 'Never Married', true, 17],
+  ['Pranav Kulkarni', 27, 'Environmental Consultant', 'Pune, Maharashtra', 'M.Tech, COEP', 'Masters', 'Hindu', 'Deshastha', 'Never Married', true, 18],
+  ['Ehsaan Qureshi', 34, 'Architect', 'Bhopal, Madhya Pradesh', 'B.Arch, SPA Bhopal', 'Bachelors', 'Muslim', 'Sunni', 'Divorced', false, 19],
+  ['Balvinder Sandhu', 29, 'Agri-Business Manager', 'Chandigarh, Punjab', 'MBA Agribusiness, PAU', 'Masters', 'Sikh', 'Jat', 'Never Married', true, 20],
+];
+
+const rawFemale = [
+  ['Kavya Subramaniam', 26, 'Biotechnologist', 'Chennai, Tamil Nadu', 'M.Sc Biotech, VIT', 'Masters', 'Hindu', 'Iyengar', 'Never Married', true, 1],
+  ['Simran Kaur Gill', 28, 'HR Manager', 'Chandigarh, Punjab', 'MBA HR, PU', 'Masters', 'Sikh', 'Jat', 'Never Married', true, 2],
+  ['Ayesha Siddiqui', 30, 'Pediatrician', 'Lucknow, Uttar Pradesh', 'MD Pediatrics, KGMU', 'Doctorate', 'Muslim', 'Sunni', 'Never Married', true, 3],
+  ['Lakshmi Venkataraman', 27, 'Chartered Accountant', 'Chennai, Tamil Nadu', 'CA, ICAI', 'Bachelors', 'Hindu', 'Iyer', 'Never Married', false, 4],
+  ["Riya D'Souza", 25, 'Air Hostess', 'Mumbai, Maharashtra', "BA, St. Xavier's College", 'Bachelors', 'Christian', 'Catholic', 'Never Married', true, 5],
+  ['Pooja Rathore', 29, 'Bank Officer', 'Jodhpur, Rajasthan', 'MBA Finance, MDS University', 'Masters', 'Hindu', 'Rajput', 'Never Married', true, 6],
+  ['Neha Kapoor', 31, 'Interior Designer', 'Delhi, NCR', 'B.Des, Pearl Academy', 'Bachelors', 'Hindu', 'Khatri', 'Divorced', false, 7],
+  ['Swati Deshmukh', 26, 'Veterinarian', 'Nagpur, Maharashtra', 'BVSc, Nagpur Veterinary College', 'Bachelors', 'Hindu', 'Deshastha', 'Never Married', true, 8],
+  ['Ipsita Mohanty', 28, 'Civil Services Officer', 'Bhubaneswar, Odisha', 'MA Public Admin, Utkal University', 'Masters', 'Hindu', 'Brahmin', 'Never Married', true, 9],
+  ['Tanvi Bhargava', 24, 'Dentist', 'Jaipur, Rajasthan', 'BDS, RUHS', 'Bachelors', 'Hindu', 'Brahmin', 'Never Married', true, 10],
+  ['Farah Khan Lodhi', 32, 'School Principal', 'Bhopal, Madhya Pradesh', 'M.Ed, Barkatullah University', 'Masters', 'Muslim', 'Sunni', 'Widowed', false, 11],
+  ['Aparna Warrier', 27, 'Ayurvedic Physician', 'Kochi, Kerala', 'BAMS, Kerala University', 'Bachelors', 'Hindu', 'Nair', 'Never Married', true, 12],
+  ['Grace Thomas', 29, 'Speech Therapist', 'Bengaluru, Karnataka', 'MSc Speech-Language Pathology, AIISH', 'Masters', 'Christian', 'Protestant', 'Never Married', true, 13],
+  ['Manpreet Kaur Bedi', 30, 'Fashion Designer', 'Ludhiana, Punjab', 'B.Des, NIFT', 'Bachelors', 'Sikh', 'Arora', 'Divorced', true, 14],
+  ['Diya Choudhary', 25, 'Journalist', 'Ahmedabad, Gujarat', 'MA Journalism, MICA', 'Masters', 'Hindu', 'Brahmin', 'Never Married', false, 15],
+  ['Ruchika Malviya', 28, 'Investment Analyst', 'Indore, Madhya Pradesh', 'MBA Finance, IIM Indore', 'Masters', 'Hindu', 'Brahmin', 'Never Married', true, 16],
+  ['Sana Merchant', 31, 'Radiologist', 'Surat, Gujarat', 'MD Radiology, GMERS', 'Doctorate', 'Muslim', 'Sunni', 'Never Married', true, 17],
+  ['Christina Fernandes', 26, 'Marine Biologist', 'Panaji, Goa', 'M.Sc Marine Biology, Goa University', 'Masters', 'Christian', 'Catholic', 'Never Married', true, 18],
+  ['Bhavna Rawal', 33, 'Corporate Lawyer', 'Dehradun, Uttarakhand', 'LLB, National Law University', 'Bachelors', 'Hindu', 'Rajput', 'Divorced', false, 19],
+  ['Amandeep Kaur Sethi', 27, 'Textile Designer', 'Amritsar, Punjab', 'B.Des Textiles, NIFT', 'Bachelors', 'Sikh', 'Jat', 'Never Married', true, 20],
+];
+
+function buildDummyProfile(row, gender, photo, idPrefix, index) {
+  const [name, age, profession, location, education, educationLevel, religion, community, maritalStatus, verified] = row;
+  return {
+    id: `${idPrefix}${index + 1}`,
+    name,
+    age,
+    gender,
+    profession,
+    location,
+    city: location.split(',')[0].trim(),
+    education,
+    education_level: educationLevel,
+    religion,
+    community,
+    marital_status: maritalStatus,
+    verified,
+    height_cm: gender === 'male' ? 165 + ((index * 3) % 21) : 150 + ((index * 3) % 21),
+    mother_tongue: ['Hindi', 'Punjabi', 'Tamil', 'Malayalam', 'Marathi', 'Gujarati', 'Bengali', 'Urdu'][index % 8],
+    diet: ['Vegetarian', 'Non-Vegetarian', 'Eggetarian'][index % 3],
+    photo,
+    about: bios[index % bios.length],
+    last_active_days: (index * 2) % 21,
+    created_at: new Date(Date.now() - (index + 24) * 36e5 * 6).toISOString(),
+  };
+}
+
+const dummyMales = rawMale.map((row, i) =>
+  buildDummyProfile(row.slice(0, -1), 'male', dummyMalePhoto(row[row.length - 1]), 'dm', i)
+);
+const dummyFemales = rawFemale.map((row, i) =>
+  buildDummyProfile(row.slice(0, -1), 'female', dummyFemalePhoto(row[row.length - 1]), 'df', i)
+);
+
+export const profiles = [...original, ...dummyMales, ...dummyFemales];
 
 export const stories = [
   {

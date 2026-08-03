@@ -84,9 +84,46 @@ export function toArray(v) {
     .filter(Boolean);
 }
 
+/**
+ * Marks each profile with whether the given viewer has shortlisted /
+ * expressed interest in it, so the heart icon on a ProfileCard reflects
+ * reality on first render instead of resetting to "off" on every reload.
+ * A no-op (flags default false) when there is no logged-in viewer.
+ */
+async function annotateViewerFlags(items, viewerId) {
+  if (!viewerId || items.length === 0) {
+    return items.map((p) => ({ ...p, is_shortlisted: false, is_interested: false }));
+  }
+
+  let shortlistedIds, interestedIds;
+  if (usingSupabase) {
+    const [sl, it] = await Promise.all([
+      supabase.from('shortlists').select('profile_id').eq('user_id', viewerId),
+      supabase.from('interests').select('profile_id').eq('user_id', viewerId),
+    ]);
+    if (sl.error) throw sl.error;
+    if (it.error) throw it.error;
+    shortlistedIds = new Set((sl.data ?? []).map((r) => r.profile_id));
+    interestedIds = new Set((it.data ?? []).map((r) => r.profile_id));
+  } else {
+    shortlistedIds = new Set(
+      mem.shortlists.filter((s) => s.user_id === viewerId).map((s) => s.profile_id)
+    );
+    interestedIds = new Set(
+      mem.interests.filter((s) => s.user_id === viewerId).map((s) => s.profile_id)
+    );
+  }
+
+  return items.map((p) => ({
+    ...p,
+    is_shortlisted: shortlistedIds.has(p.id),
+    is_interested: interestedIds.has(p.id),
+  }));
+}
+
 // -------------------------------------------------------------- profiles ---
 
-export async function listProfiles(query = {}) {
+export async function listProfiles(query = {}, viewerId) {
   const page = Math.max(1, Number(query.page) || 1);
   const pageSize = Math.min(48, Math.max(1, Number(query.pageSize) || 6));
   const sort = query.sort || 'newest';
@@ -115,26 +152,132 @@ export async function listProfiles(query = {}) {
     const from = (page - 1) * pageSize;
     const { data, count, error } = await sb.range(from, from + pageSize - 1);
     if (error) throw error;
-    return { items: data ?? [], total: count ?? 0, page, pageSize };
+    return {
+      items: await annotateViewerFlags(data ?? [], viewerId),
+      total: count ?? 0,
+      page,
+      pageSize,
+    };
   }
 
   const filtered = applySort(applyFilters(mem.profiles, query), sort);
   const from = (page - 1) * pageSize;
   return {
-    items: filtered.slice(from, from + pageSize),
+    items: await annotateViewerFlags(filtered.slice(from, from + pageSize), viewerId),
     total: filtered.length,
     page,
     pageSize,
   };
 }
 
-export async function getProfile(id) {
+export async function getProfile(id, viewerId) {
+  let profile;
   if (usingSupabase) {
     const { data, error } = await supabase.from('profiles').select('*').eq('id', id).maybeSingle();
     if (error) throw error;
-    return data;
+    profile = data;
+  } else {
+    profile = mem.profiles.find((p) => p.id === id) || null;
   }
-  return mem.profiles.find((p) => p.id === id) || null;
+  if (!profile) return null;
+  const [annotated] = await annotateViewerFlags([profile], viewerId);
+  return annotated;
+}
+
+const OPPOSITE_GENDER = { male: 'female', female: 'male' };
+
+function ageFromDob(dob) {
+  if (!dob) return null;
+  const birth = new Date(dob);
+  if (Number.isNaN(birth.getTime())) return null;
+  const diff = Date.now() - birth.getTime();
+  return Math.floor(diff / (365.25 * 24 * 3600 * 1000));
+}
+
+/**
+ * Rule-based compatibility score (0–100) between a member's own captured
+ * profile (`viewer`) and a candidate listing. Deliberately transparent and
+ * deterministic rather than a black-box model — every point is explainable,
+ * which matters more than raw accuracy for a matrimonial audience that will
+ * ask "why was I shown this person".
+ */
+export function scoreMatch(viewer, candidate) {
+  const d = viewer.details || {};
+  let score = 0;
+
+  if (d.religion && candidate.religion && d.religion.toLowerCase() === candidate.religion.toLowerCase()) {
+    score += 25;
+  }
+  if (d.community && candidate.community && d.community.toLowerCase() === candidate.community.toLowerCase()) {
+    score += 15;
+  }
+
+  const candidateState = (candidate.location || '').split(',')[1]?.trim().toLowerCase();
+  if (d.city && candidate.city && d.city.toLowerCase() === candidate.city.toLowerCase()) {
+    score += 10;
+  } else if (d.state && candidateState && d.state.toLowerCase() === candidateState) {
+    score += 5;
+  }
+
+  if (d.diet && candidate.diet && d.diet === candidate.diet) score += 10;
+  if (d.maritalStatus && candidate.marital_status && d.maritalStatus === candidate.marital_status) {
+    score += 10;
+  }
+
+  const viewerAge = ageFromDob(viewer.dob);
+  if (viewerAge != null && typeof candidate.age === 'number') {
+    const gap = Math.abs(viewerAge - candidate.age);
+    if (gap <= 5) score += 10;
+    else if (gap <= 10) score += 5;
+  }
+
+  if (candidate.verified) score += 5;
+
+  return Math.min(100, score);
+}
+
+/**
+ * The "algorithm": every candidate of the opposite gender, scored against
+ * the viewer's own onboarding profile with scoreMatch, highest first. This
+ * is what powers /matches — automatic, no manual gender toggle required.
+ */
+export async function getMatches(viewerId, { page = 1, pageSize = 12 } = {}) {
+  const viewer = await getUserById(viewerId);
+  if (!viewer) return { items: [], total: 0, page: 1, pageSize, viewerGender: null };
+
+  const targetGender = OPPOSITE_GENDER[viewer.gender] || null;
+  if (!targetGender) return { items: [], total: 0, page: 1, pageSize, viewerGender: viewer.gender };
+
+  let candidates;
+  if (usingSupabase) {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('gender', targetGender)
+      .limit(500);
+    if (error) throw error;
+    candidates = data ?? [];
+  } else {
+    candidates = mem.profiles.filter((p) => p.gender === targetGender);
+  }
+
+  const scored = candidates
+    .map((c) => ({ ...c, match_score: scoreMatch(viewer, c) }))
+    .sort((a, b) => b.match_score - a.match_score || new Date(b.created_at) - new Date(a.created_at));
+
+  const annotated = await annotateViewerFlags(scored, viewerId);
+
+  const p = Math.max(1, Number(page) || 1);
+  const size = Math.min(48, Math.max(1, Number(pageSize) || 12));
+  const from = (p - 1) * size;
+
+  return {
+    items: annotated.slice(from, from + size),
+    total: annotated.length,
+    page: p,
+    pageSize: size,
+    viewerGender: viewer.gender,
+  };
 }
 
 export async function listStories() {
@@ -189,6 +332,167 @@ export async function setUserPlan(userId, planId) {
   if (u) u.plan_id = planId;
 }
 
+/**
+ * Merges `patch` into the user's matrimonial `details` blob and, when
+ * present, `phone`/`photos`/`photo_url`. Used by the onboarding wizard so a
+ * member can save one section at a time without resubmitting the rest.
+ */
+export async function updateUserProfile(userId, patch) {
+  const { details: detailsPatch, ...columns } = patch;
+
+  if (usingSupabase) {
+    const current = await getUserById(userId);
+    if (!current) return null;
+    const mergedDetails = { ...(current.details || {}), ...(detailsPatch || {}) };
+    const { data, error } = await supabase
+      .from('users')
+      .update({ ...columns, details: mergedDetails })
+      .eq('id', userId)
+      .select()
+      .maybeSingle();
+    if (error) throw error;
+    return data;
+  }
+
+  const u = mem.users.find((x) => x.id === userId);
+  if (!u) return null;
+  Object.assign(u, columns);
+  u.details = { ...(u.details || {}), ...(detailsPatch || {}) };
+  return u;
+}
+
+/**
+ * Appends a photo URL to the member's gallery. The first photo uploaded
+ * becomes `photo_url` (the profile picture) automatically.
+ */
+export async function addUserPhoto(userId, url) {
+  const user = await getUserById(userId);
+  if (!user) return null;
+  const photos = [...(user.photos || []), url];
+  const patch = { photos, photo_url: user.photo_url || url };
+
+  if (usingSupabase) {
+    const { data, error } = await supabase
+      .from('users')
+      .update(patch)
+      .eq('id', userId)
+      .select()
+      .maybeSingle();
+    if (error) throw error;
+    return data;
+  }
+
+  Object.assign(user, patch);
+  return user;
+}
+
+/** Removes a photo URL from the gallery; demotes `photo_url` if it was primary. */
+export async function removeUserPhoto(userId, url) {
+  const user = await getUserById(userId);
+  if (!user) return null;
+  const photos = (user.photos || []).filter((p) => p !== url);
+  const patch = { photos, photo_url: user.photo_url === url ? photos[0] || null : user.photo_url };
+
+  if (usingSupabase) {
+    const { data, error } = await supabase
+      .from('users')
+      .update(patch)
+      .eq('id', userId)
+      .select()
+      .maybeSingle();
+    if (error) throw error;
+    return data;
+  }
+
+  Object.assign(user, patch);
+  return user;
+}
+
+/** Paginated, searchable member listing for the admin dashboard. */
+export async function listUsers({ page = 1, pageSize = 20, search = '' } = {}) {
+  const p = Math.max(1, Number(page) || 1);
+  const size = Math.min(200, Math.max(1, Number(pageSize) || 20));
+
+  if (usingSupabase) {
+    let sb = supabase
+      .from('users')
+      .select('*', { count: 'exact' })
+      .eq('role', 'member')
+      .order('created_at', { ascending: false });
+    if (search) sb = sb.or(`email.ilike.%${search}%,first_name.ilike.%${search}%,last_name.ilike.%${search}%`);
+    const from = (p - 1) * size;
+    const { data, count, error } = await sb.range(from, from + size - 1);
+    if (error) throw error;
+    return { items: data ?? [], total: count ?? 0, page: p, pageSize: size };
+  }
+
+  let rows = mem.users.filter((u) => (u.role || 'member') === 'member');
+  if (search) {
+    const needle = search.toLowerCase();
+    rows = rows.filter((u) =>
+      [u.email, u.first_name, u.last_name].join(' ').toLowerCase().includes(needle)
+    );
+  }
+  rows = [...rows].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  const from = (p - 1) * size;
+  return { items: rows.slice(from, from + size), total: rows.length, page: p, pageSize: size };
+}
+
+/** All members, unpaginated — used for the CSV export. */
+export async function listAllUsers() {
+  if (usingSupabase) {
+    const { data, error } = await supabase
+      .from('users')
+      .select('*')
+      .eq('role', 'member')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return data ?? [];
+  }
+  return mem.users
+    .filter((u) => (u.role || 'member') === 'member')
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+}
+
+/**
+ * Creates the super-admin account on boot if it doesn't exist yet, and keeps
+ * its password in sync with ADMIN_PASSWORD on every restart — so rotating
+ * the env var is enough to change the login, no SQL required.
+ */
+export async function ensureAdminSeeded({ email, passwordHash }) {
+  const existing = await findUserByEmail(email);
+  if (existing) {
+    if (existing.password_hash !== passwordHash || existing.role !== 'admin') {
+      if (usingSupabase) {
+        await supabase
+          .from('users')
+          .update({ password_hash: passwordHash, role: 'admin' })
+          .eq('id', existing.id);
+      } else {
+        existing.password_hash = passwordHash;
+        existing.role = 'admin';
+      }
+    }
+    return;
+  }
+
+  await createUser({
+    email,
+    password_hash: passwordHash,
+    first_name: 'Super',
+    last_name: 'Admin',
+    gender: 'other',
+    dob: null,
+    profile_for: 'self',
+    plan_id: null,
+    role: 'admin',
+    phone: null,
+    photo_url: null,
+    photos: [],
+    details: {},
+  });
+}
+
 // ------------------------------------------------- shortlists / interests ---
 
 async function toggleLink(table, list, userId, profileId) {
@@ -232,6 +536,19 @@ export async function listShortlist(userId) {
     return (data ?? []).map((r) => r.profiles).filter(Boolean);
   }
   const ids = mem.shortlists.filter((s) => s.user_id === userId).map((s) => s.profile_id);
+  return mem.profiles.filter((p) => ids.includes(p.id));
+}
+
+export async function listInterests(userId) {
+  if (usingSupabase) {
+    const { data, error } = await supabase
+      .from('interests')
+      .select('profile_id, profiles(*)')
+      .eq('user_id', userId);
+    if (error) throw error;
+    return (data ?? []).map((r) => r.profiles).filter(Boolean);
+  }
+  const ids = mem.interests.filter((s) => s.user_id === userId).map((s) => s.profile_id);
   return mem.profiles.filter((p) => ids.includes(p.id));
 }
 

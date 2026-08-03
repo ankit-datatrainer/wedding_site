@@ -114,14 +114,24 @@ SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
 
 RAZORPAY_KEY_ID=your_razorpay_key_id
 RAZORPAY_KEY_SECRET=your_razorpay_key_secret
+
+ADMIN_EMAIL=admin@everafter.com
+ADMIN_PASSWORD=PASTE_A_STRONG_PASSWORD_HERE
+
+UPLOADS_DIR=uploads
 EOF
 ```
 
-Generate a real secret and paste it in place of the placeholder:
+Generate real values for both placeholders:
 
 ```bash
-openssl rand -hex 32
+openssl rand -hex 32          # JWT_SECRET
+openssl rand -base64 18       # ADMIN_PASSWORD
 ```
+
+**Write the admin password down before restarting the API** — it's only ever
+shown to you once, here. It's re-synced from `ADMIN_PASSWORD` on every boot,
+so if you lose it, set a new value and restart.
 
 Leave the Supabase and Razorpay lines as `your_...` for now — the app runs on
 seeded in-memory data and simulated payments until you fill them in. **It will
@@ -203,6 +213,10 @@ place and sets up auto-renewal.
 
 Open **[https://wedding.peculiex.com](https://wedding.peculiex.com)**.
 
+The admin panel is at
+**[https://wedding.peculiex.com/admin/login](https://wedding.peculiex.com/admin/login)**
+— sign in with the `ADMIN_EMAIL` / `ADMIN_PASSWORD` set in step 5.
+
 ---
 
 ## 8. Firewall
@@ -237,6 +251,26 @@ Two things that bite here:
   restart alone ships the old bundle.
 - **Never stop the API before building.** Same prerender dependency as the
   first deploy — the build will fail with `ECONNREFUSED`.
+- **If `deploy/nginx.conf` changed** (it did, to add the `/uploads/` location
+  for member photos), copy it over and reload Nginx too.
+
+```bash
+sudo cp deploy/nginx.conf /etc/nginx/sites-available/wedding.peculiex.com
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+---
+
+## Backing up member photos
+
+Uploaded photos live on local disk at `server/uploads/`, outside Supabase and
+outside this repo (it's gitignored — real user data, not source). Nothing here
+backs it up automatically. Include it in whatever backup routine covers the
+rest of the box, e.g.:
+
+```bash
+tar -czf /root/backups/uploads-$(date +%F).tar.gz -C /var/www/wedding/server uploads
+```
 
 ---
 

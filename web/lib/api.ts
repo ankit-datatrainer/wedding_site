@@ -12,17 +12,31 @@ export const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000
 export const SERVER_API_URL = process.env.INTERNAL_API_URL || API_URL;
 
 export const TOKEN_KEY = 'everafter_token';
+export const ADMIN_TOKEN_KEY = 'everafter_admin_token';
 
-export function getToken(): string | null {
+export function getToken(key: string = TOKEN_KEY): string | null {
   if (typeof window === 'undefined') return null;
-  return window.localStorage.getItem(TOKEN_KEY);
+  return window.localStorage.getItem(key);
 }
 
-type Options = RequestInit & { auth?: boolean };
+/**
+ * Resolves an API-relative path (e.g. `/uploads/u1/photo.jpg`) to an absolute
+ * URL against the API origin. Uploaded photos are served by the API, which
+ * runs on a different origin/port than the web app in dev — a bare relative
+ * path would otherwise be requested from the Next.js server and 404.
+ * Already-absolute URLs (the seeded googleusercontent photos) pass through.
+ */
+export function mediaUrl(path: string | null | undefined): string {
+  if (!path) return '';
+  if (/^https?:\/\//.test(path)) return path;
+  return `${API_URL}${path}`;
+}
+
+type Options = RequestInit & { auth?: boolean; tokenKey?: string };
 
 /** Thin fetch wrapper that unwraps the API's `{ error }` envelope. */
 export async function api<T>(path: string, options: Options = {}): Promise<T> {
-  const { auth, headers, ...rest } = options;
+  const { auth, tokenKey, headers, ...rest } = options;
 
   const finalHeaders: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -30,7 +44,7 @@ export async function api<T>(path: string, options: Options = {}): Promise<T> {
   };
 
   if (auth) {
-    const token = getToken();
+    const token = getToken(tokenKey);
     if (token) finalHeaders.Authorization = `Bearer ${token}`;
   }
 
@@ -40,6 +54,26 @@ export async function api<T>(path: string, options: Options = {}): Promise<T> {
 
   if (!res.ok) throw new Error(data?.error || `Request failed (${res.status})`);
   return data as T;
+}
+
+/** multipart/form-data upload — kept separate from api() because it must not set a JSON Content-Type. */
+export async function uploadPhoto(file: File): Promise<{ url: string; photos: string[]; photo_url: string }> {
+  const token = getToken();
+  const form = new FormData();
+  form.append('photo', file);
+
+  const res = await fetch(`${API_URL}/api/uploads/photo`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    body: form,
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data?.error || `Upload failed (${res.status})`);
+  return data;
+}
+
+export async function deletePhoto(url: string): Promise<{ photos: string[]; photo_url: string | null }> {
+  return api('/api/uploads/photo', { method: 'DELETE', auth: true, body: JSON.stringify({ url }) });
 }
 
 /**

@@ -12,7 +12,7 @@ import type { Profile } from '@/lib/types';
 export function ProfileCard({ profile }: { profile: Profile }) {
   const { user } = useAuth();
   const router = useRouter();
-  const [shortlisted, setShortlisted] = useState(false);
+  const [shortlisted, setShortlisted] = useState(profile.is_shortlisted ?? false);
   const [busy, setBusy] = useState(false);
 
   async function toggle() {
@@ -48,6 +48,14 @@ export function ProfileCard({ profile }: { profile: Profile }) {
           <div className="absolute right-3 top-3 flex items-center gap-1 rounded bg-surface/90 px-2 py-1 shadow-sm backdrop-blur-sm">
             <Icon name="verified" className="text-[14px] text-secondary" />
             <span className="font-body text-[10px] uppercase text-primary">Verified</span>
+          </div>
+        )}
+        {typeof profile.match_score === 'number' && (
+          <div className="absolute left-3 top-3 flex items-center gap-1 rounded bg-secondary px-2 py-1 shadow-sm">
+            <Icon name="favorite" className="text-[12px] text-on-secondary" filled />
+            <span className="font-body text-[10px] uppercase text-on-secondary">
+              {profile.match_score}% Match
+            </span>
           </div>
         )}
       </div>

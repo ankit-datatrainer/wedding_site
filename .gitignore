@@ -29,3 +29,6 @@ Thumbs.db
 *.tsbuildinfo
 next-env.d.ts
 .pm2/
+
+# member-uploaded photos — real user data, never committed
+server/uploads/

@@ -52,6 +52,18 @@ export function Header() {
           {ready && user ? (
             <>
               <Link
+                href="/matches"
+                className="hidden font-body text-label-lg uppercase text-secondary transition-colors hover:text-on-secondary-container sm:block"
+              >
+                Matches
+              </Link>
+              <Link
+                href="/onboarding"
+                className="hidden font-body text-label-lg uppercase text-on-surface-variant transition-colors hover:text-secondary sm:block"
+              >
+                My Profile
+              </Link>
+              <Link
                 href="/shortlist"
                 className="hidden font-body text-label-lg uppercase text-on-surface-variant transition-colors hover:text-secondary sm:block"
               >
@@ -113,6 +125,49 @@ export function Header() {
               {item.label}
             </Link>
           ))}
+
+          {ready && user ? (
+            <>
+              <Link
+                href="/matches"
+                onClick={() => setOpen(false)}
+                className="rounded-lg px-3 py-3 font-body text-label-lg uppercase text-secondary"
+              >
+                Matches
+              </Link>
+              <Link
+                href="/onboarding"
+                onClick={() => setOpen(false)}
+                className="rounded-lg px-3 py-3 font-body text-label-lg uppercase text-on-surface-variant"
+              >
+                My Profile
+              </Link>
+              <Link
+                href="/shortlist"
+                onClick={() => setOpen(false)}
+                className="rounded-lg px-3 py-3 font-body text-label-lg uppercase text-on-surface-variant"
+              >
+                Shortlist
+              </Link>
+              <button
+                onClick={() => {
+                  signOut();
+                  setOpen(false);
+                }}
+                className="rounded-lg px-3 py-3 text-left font-body text-label-lg uppercase text-on-surface-variant"
+              >
+                Log Out
+              </button>
+            </>
+          ) : (
+            <Link
+              href="/login"
+              onClick={() => setOpen(false)}
+              className="rounded-lg px-3 py-3 font-body text-label-lg uppercase text-on-surface-variant"
+            >
+              Log In
+            </Link>
+          )}
         </nav>
       )}
     </header>

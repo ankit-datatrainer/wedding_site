@@ -1,10 +1,11 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Icon } from './Icon';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import type { Profile } from '@/lib/types';
 
 export function ProfileActions({ profileId, name }: { profileId: string; name: string }) {
   const { user } = useAuth();
@@ -12,6 +13,22 @@ export function ProfileActions({ profileId, name }: { profileId: string; name: s
   const [shortlisted, setShortlisted] = useState(false);
   const [interested, setInterested] = useState(false);
   const [message, setMessage] = useState('');
+
+  // The page around this component is server-rendered without the viewer's
+  // token (it lives in browser localStorage, unreachable during SSR), so the
+  // initial fetch there can never know if *this* viewer already acted on
+  // this profile. Re-fetch client-side, once, to pick up the real state.
+  useEffect(() => {
+    if (!user) return;
+    api<Profile>(`/api/profiles/${profileId}`, { auth: true })
+      .then((profile) => {
+        setShortlisted(profile.is_shortlisted ?? false);
+        setInterested(profile.is_interested ?? false);
+      })
+      .catch(() => {
+        /* keep defaults; the action buttons still work either way */
+      });
+  }, [user, profileId]);
 
   async function act(kind: 'shortlist' | 'interest') {
     if (!user) {

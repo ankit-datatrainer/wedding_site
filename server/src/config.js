@@ -22,4 +22,17 @@ export const config = {
       return bool(process.env.RAZORPAY_KEY_ID) && bool(process.env.RAZORPAY_KEY_SECRET);
     },
   },
+
+  // The super-admin account is seeded on boot (see store.js#ensureAdminSeeded)
+  // rather than created through the UI — there is no public sign-up path to
+  // an admin role. Falls back to a fixed dev password so the panel is usable
+  // immediately; ADMIN_PASSWORD should always be overridden in production.
+  admin: {
+    email: (bool(process.env.ADMIN_EMAIL) ? process.env.ADMIN_EMAIL : 'admin@everafter.com').toLowerCase(),
+    password: bool(process.env.ADMIN_PASSWORD) ? process.env.ADMIN_PASSWORD : 'ChangeMe123!',
+    isDefaultPassword: !bool(process.env.ADMIN_PASSWORD),
+  },
+
+  uploadsDir: process.env.UPLOADS_DIR || 'uploads',
+  maxUploadMb: 5,
 };

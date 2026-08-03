@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { api, TOKEN_KEY } from './api';
-import type { User } from './types';
+import type { MemberDetails, User } from './types';
 
 type AuthState = {
   user: User | null;
@@ -11,6 +11,7 @@ type AuthState = {
   signUp: (payload: Record<string, string>) => Promise<void>;
   signOut: () => void;
   refresh: () => Promise<void>;
+  updateProfile: (patch: { phone?: string; details?: Partial<MemberDetails> }) => Promise<User>;
 };
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -65,9 +66,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
   }, []);
 
+  const updateProfile = useCallback(
+    async (patch: { phone?: string; details?: Partial<MemberDetails> }) => {
+      const res = await api<{ user: User }>('/api/auth/me', {
+        method: 'PATCH',
+        auth: true,
+        body: JSON.stringify(patch),
+      });
+      setUser(res.user);
+      return res.user;
+    },
+    []
+  );
+
   const value = useMemo(
-    () => ({ user, ready, signIn, signUp, signOut, refresh }),
-    [user, ready, signIn, signUp, signOut, refresh]
+    () => ({ user, ready, signIn, signUp, signOut, refresh, updateProfile }),
+    [user, ready, signIn, signUp, signOut, refresh, updateProfile]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

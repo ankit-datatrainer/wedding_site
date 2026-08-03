@@ -72,7 +72,7 @@ export default function RegisterPage() {
     setPending(true);
     try {
       await signUp(form);
-      router.push('/browse');
+      router.push('/onboarding');
     } catch (err) {
       setError((err as Error).message);
       setPending(false);

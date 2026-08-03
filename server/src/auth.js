@@ -2,7 +2,11 @@ import jwt from 'jsonwebtoken';
 import { config } from './config.js';
 
 export function signToken(user) {
-  return jwt.sign({ sub: user.id, email: user.email }, config.jwtSecret, { expiresIn: '7d' });
+  return jwt.sign(
+    { sub: user.id, email: user.email, role: user.role || 'member' },
+    config.jwtSecret,
+    { expiresIn: '7d' }
+  );
 }
 
 function readToken(req) {
@@ -36,6 +40,14 @@ export function requireAuth(req, res, next) {
   }
 }
 
+/** Rejects unless the token belongs to an admin. Run requireAuth first. */
+export function requireAdmin(req, res, next) {
+  if (req.user?.role !== 'admin') {
+    return res.status(403).json({ error: 'Admin access required.' });
+  }
+  next();
+}
+
 export const publicUser = (u) => ({
   id: u.id,
   email: u.email,
@@ -45,4 +57,10 @@ export const publicUser = (u) => ({
   dob: u.dob,
   profile_for: u.profile_for,
   plan_id: u.plan_id ?? null,
+  role: u.role || 'member',
+  phone: u.phone ?? null,
+  photo_url: u.photo_url ?? null,
+  photos: u.photos ?? [],
+  details: u.details ?? {},
+  created_at: u.created_at,
 });
