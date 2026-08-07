@@ -9,6 +9,7 @@
 // several of these code paths differ from the in-memory fallback.
 
 import { config } from './config.js';
+import { makePdf } from './test-utils/make-pdf.js';
 
 const port = process.argv[2] || config.port;
 const BASE = `http://127.0.0.1:${port}`;
@@ -287,6 +288,79 @@ check('POST /api/payments/verify activates plan', verifyPay.status === 200 && ve
 
 const mePlan = await req('/api/auth/me', { headers: AUTH });
 check('plan persisted on the account', mePlan.body?.user?.plan_id === 'gold');
+
+// --------------------------------------------------------------- biodata ---
+console.log('\nBiodata PDF import');
+
+const bioPdf = makePdf([
+  'MARRIAGE BIODATA',
+  `Name: Verify Biodata${stamp}`,
+  'Date of Birth: 14/09/1992',
+  'Gender: Female',
+  "Height: 5'4\"",
+  'Marital Status: Never Married',
+  'Religion: Hindu',
+  'Caste: Nair',
+  'Mother Tongue: Malayalam',
+  'Diet: Vegetarian',
+  'Education: M.Sc Biotechnology',
+  'Occupation: Research Scientist',
+  'City: Kochi',
+  'State: Kerala',
+]);
+
+const parseForm = new FormData();
+parseForm.append('biodata', new Blob([bioPdf], { type: 'application/pdf' }), 'verify.pdf');
+const parseRes = await fetch(`${BASE}/api/uploads/biodata`, { method: 'POST', body: parseForm });
+const parsed = await parseRes.json();
+check('POST /api/uploads/biodata parses a PDF', parseRes.status === 200 && !!parsed.draft,
+  parsed.error || `${parsed.filled} fields`);
+check('parsed draft carries identity fields',
+  parsed.draft?.gender === 'female' && parsed.draft?.dob === '1992-09-14');
+check('parsed draft carries profile details',
+  parsed.draft?.details?.religion === 'Hindu' && parsed.draft?.details?.heightCm === '163');
+
+// The parse output must survive the same validation a hand-filled form does.
+const bioPatch = await req('/api/auth/me', {
+  method: 'PATCH', headers: AUTH_F,
+  body: JSON.stringify({ details: parsed.draft?.details || {} }),
+});
+check('parsed details are accepted by PATCH /api/auth/me', bioPatch.status === 200,
+  bioPatch.body?.error || '');
+
+const importForm = new FormData();
+importForm.append('biodata', new Blob([bioPdf], { type: 'application/pdf' }), 'verify.pdf');
+const importRes = await fetch(`${BASE}/api/admin/profiles/import-biodata`, {
+  method: 'POST', headers: ADMIN, body: importForm,
+});
+const imported = await importRes.json();
+check('POST /api/admin/profiles/import-biodata creates a profile',
+  importRes.status === 201 && imported.summary?.imported === 1,
+  imported.failures?.[0]?.error || imported.error || '');
+
+const importedId = imported.imported?.[0]?.profile?.id;
+if (importedId) {
+  const fetched = await req(`/api/profiles/${importedId}`);
+  check('imported profile is browsable', fetched.status === 200 && fetched.body?.city === 'Kochi');
+  const del = await req(`/api/admin/profiles/${importedId}`, { method: 'DELETE', headers: ADMIN });
+  check('imported test profile cleaned up', del.status === 200);
+}
+
+const junkForm = new FormData();
+junkForm.append('biodata', new Blob([Buffer.from('not a pdf')], { type: 'text/plain' }), 'x.txt');
+const junkRes = await fetch(`${BASE}/api/uploads/biodata`, { method: 'POST', body: junkForm });
+check('non-PDF biodata upload rejected', junkRes.status === 400);
+
+const anonImport = await fetch(`${BASE}/api/admin/profiles/import-biodata`, {
+  method: 'POST',
+  body: (() => {
+    const f = new FormData();
+    f.append('biodata', new Blob([bioPdf], { type: 'application/pdf' }), 'verify.pdf');
+    return f;
+  })(),
+});
+check('biodata import requires an admin session',
+  anonImport.status === 401 || anonImport.status === 403);
 
 // ---------------------------------------------------------------- result ---
 console.log(`\n${'-'.repeat(60)}`);

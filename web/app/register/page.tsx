@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '@/components/Icon';
-import { uploadPhoto } from '@/lib/api';
+import { parseBiodata, uploadPhoto, type BiodataDraft } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import type { MemberDetails } from '@/lib/types';
 
@@ -200,6 +200,167 @@ const BLANK: FormState = {
 
 type Photo = { file: File; url: string };
 
+type BiodataSummary = { filename: string; filled: number; warnings: string[] };
+
+/**
+ * The biodata shortcut: read an existing PDF and pre-fill the whole wizard.
+ *
+ * Deliberately still a wizard afterwards rather than a one-click "profile
+ * created" — parsed values land in the same fields the member would have
+ * typed, so every one of them is visible and editable before anything is
+ * saved. A misread height is then a two-second correction, not a wrong
+ * profile nobody notices.
+ */
+function BiodataStep({
+  summary,
+  onParsed,
+}: {
+  summary: BiodataSummary | null;
+  onParsed: (draft: BiodataDraft, file: File, filled: number, warnings: string[]) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState('');
+  const [dragging, setDragging] = useState(false);
+
+  async function handleFile(file: File | undefined) {
+    if (!file) return;
+    if (file.type !== 'application/pdf' && !/\.pdf$/i.test(file.name)) {
+      setError('Please choose a PDF file.');
+      return;
+    }
+    setError('');
+    setPending(true);
+    try {
+      const { draft, filled, warnings } = await parseBiodata(file);
+      onParsed(draft, file, filled, warnings);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setPending(false);
+      if (inputRef.current) inputRef.current.value = '';
+    }
+  }
+
+  if (summary) {
+    return (
+      <div className="flex flex-col gap-4">
+        <div className="flex items-start gap-3 rounded-xl border border-secondary/30 bg-secondary-fixed/40 p-4">
+          <Icon name="task_alt" className="mt-0.5 text-[22px] text-secondary" filled />
+          <div className="min-w-0 flex-1">
+            <p className="font-body text-body-md text-on-surface">
+              Read <strong>{summary.filled}</strong> {summary.filled === 1 ? 'detail' : 'details'} from{' '}
+              <span className="break-all">{summary.filename}</span>.
+            </p>
+            <p className="mt-1 font-body text-label-md text-on-surface-variant">
+              We&apos;ve filled in the next steps for you — check each one and correct anything
+              that looks wrong.
+            </p>
+          </div>
+        </div>
+
+        {summary.warnings.length > 0 && (
+          <div className="rounded-xl border border-outline-variant bg-surface-container-low p-4">
+            <p className="font-body text-label-md text-on-surface-variant">
+              A few things we couldn&apos;t read — please fill these in yourself:
+            </p>
+            <ul className="mt-2 flex flex-col gap-1">
+              {summary.warnings.slice(0, 5).map((w) => (
+                <li key={w} className="flex gap-2 font-body text-label-md text-on-surface-variant/80">
+                  <Icon name="info" className="mt-px text-[15px]" />
+                  {w}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          className="self-start font-body text-label-lg text-secondary hover:underline"
+        >
+          Upload a different PDF
+        </button>
+        <input
+          ref={inputRef}
+          type="file"
+          accept="application/pdf,.pdf"
+          className="hidden"
+          onChange={(e) => handleFile(e.target.files?.[0])}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDragging(true);
+        }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragging(false);
+          handleFile(e.dataTransfer.files?.[0]);
+        }}
+        className={`flex flex-col items-center gap-3 rounded-2xl border-2 border-dashed px-6 py-10 text-center transition-colors ${
+          dragging ? 'border-secondary bg-secondary-fixed/40' : 'border-outline-variant bg-surface-container-low'
+        }`}
+      >
+        {pending ? (
+          <>
+            <span className="h-8 w-8 animate-spin rounded-full border-2 border-secondary/30 border-t-secondary" />
+            <p className="font-body text-body-md text-on-surface">Reading your biodata…</p>
+          </>
+        ) : (
+          <>
+            <span className="flex h-14 w-14 items-center justify-center rounded-full bg-secondary-container/20">
+              <Icon name="upload_file" className="text-[28px] text-secondary" />
+            </span>
+            <div>
+              <p className="font-body text-body-md text-on-surface">
+                Drop your biodata PDF here
+              </p>
+              <p className="mt-1 font-body text-label-md text-on-surface-variant">
+                We&apos;ll read it and fill in the rest of this form for you. PDF, up to 10MB.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => inputRef.current?.click()}
+              className="mt-1 rounded-lg bg-secondary px-6 py-3 font-body text-label-lg uppercase text-on-secondary shadow-sm transition-colors hover:bg-on-secondary-container"
+            >
+              Choose PDF
+            </button>
+          </>
+        )}
+        <input
+          ref={inputRef}
+          type="file"
+          accept="application/pdf,.pdf"
+          className="hidden"
+          disabled={pending}
+          onChange={(e) => handleFile(e.target.files?.[0])}
+        />
+      </div>
+
+      {error && (
+        <p role="alert" className="flex items-center gap-2 font-body text-label-md text-error">
+          <Icon name="error" className="text-[16px]" />
+          {error}
+        </p>
+      )}
+
+      <p className="text-center font-body text-label-md text-on-surface-variant">
+        No biodata handy? Skip this — you can fill everything in yourself.
+      </p>
+    </div>
+  );
+}
+
 type Step = {
   title: string;
   subtitle: string;
@@ -213,11 +374,30 @@ type Step = {
     setPhotos: React.Dispatch<React.SetStateAction<Photo[]>>;
     showPassword: boolean;
     setShowPassword: (v: boolean) => void;
+    biodata: BiodataSummary | null;
+    onBiodataParsed: (
+      draft: BiodataDraft,
+      file: File,
+      filled: number,
+      warnings: string[]
+    ) => void;
   }) => React.ReactNode;
   validate?: (form: FormState) => string | null;
+  /** On an optional step, whether Continue should read "Skip For Now". */
+  skipWhen?: (ctx: { photos: Photo[]; biodata: BiodataSummary | null }) => boolean;
 };
 
 const STEPS: Step[] = [
+  {
+    title: 'Have a biodata ready?',
+    subtitle: 'Upload it and we’ll fill in this whole form for you — or skip and type it in.',
+    icon: 'description',
+    optional: true,
+    render: ({ biodata, onBiodataParsed }) => (
+      <BiodataStep summary={biodata} onParsed={onBiodataParsed} />
+    ),
+    skipWhen: ({ biodata }) => !biodata,
+  },
   {
     title: 'Who are you creating this profile for?',
     subtitle: "This helps us tailor the experience — you can't change this later.",
@@ -396,6 +576,7 @@ const STEPS: Step[] = [
     icon: 'add_a_photo',
     optional: true,
     render: ({ photos, setPhotos }) => <PhotoStep photos={photos} setPhotos={setPhotos} />,
+    skipWhen: ({ photos }) => photos.length === 0,
   },
   {
     title: 'Create your login',
@@ -450,6 +631,7 @@ export default function RegisterPage() {
   const [error, setError] = useState('');
   const [pending, setPending] = useState(false);
   const [uploadNote, setUploadNote] = useState('');
+  const [biodata, setBiodata] = useState<BiodataSummary | null>(null);
 
   useEffect(() => {
     if (ready && user) router.replace('/matches');
@@ -458,6 +640,33 @@ export default function RegisterPage() {
   const set = (k: keyof FormState, v: string) => setForm((f) => ({ ...f, [k]: v }));
   const setDetail = <K extends keyof MemberDetails>(k: K, v: string) =>
     setForm((f) => ({ ...f, details: { ...f.details, [k]: v } }));
+
+  /**
+   * Merges a parsed biodata into the form.
+   *
+   * Only fills blanks: anything the member has already typed wins over the
+   * PDF, so re-uploading after correcting a field never silently reverts it.
+   */
+  function onBiodataParsed(
+    draft: BiodataDraft,
+    file: File,
+    filled: number,
+    warnings: string[]
+  ) {
+    setForm((f) => {
+      const next = { ...f, details: { ...f.details } };
+      for (const key of ['firstName', 'lastName', 'gender', 'dob', 'email', 'phone'] as const) {
+        if (!next[key] && draft[key]) next[key] = draft[key];
+      }
+      for (const [key, value] of Object.entries(draft.details)) {
+        const k = key as keyof MemberDetails;
+        if (!next.details[k] && value) next.details[k] = value as never;
+      }
+      return next;
+    });
+    setBiodata({ filename: file.name, filled, warnings });
+    setError('');
+  }
 
   const total = STEPS.length;
   const current = STEPS[step];
@@ -583,7 +792,17 @@ export default function RegisterPage() {
                 </div>
               </div>
 
-              {current.render({ form, set, setDetail, photos, setPhotos, showPassword, setShowPassword })}
+              {current.render({
+                form,
+                set,
+                setDetail,
+                photos,
+                setPhotos,
+                showPassword,
+                setShowPassword,
+                biodata,
+                onBiodataParsed,
+              })}
             </div>
 
             {error && (
@@ -637,7 +856,9 @@ export default function RegisterPage() {
                   onClick={goNext}
                   className="group flex flex-1 items-center justify-center gap-2 rounded-lg bg-secondary px-8 py-3.5 font-body text-label-lg uppercase text-on-secondary shadow-md transition-colors hover:bg-on-secondary-container"
                 >
-                  {current.optional && photos.length === 0 ? 'Skip For Now' : 'Continue'}
+                  {current.optional && current.skipWhen?.({ photos, biodata })
+                    ? 'Skip For Now'
+                    : 'Continue'}
                   <Icon name="arrow_forward" className="text-[18px] transition-transform group-hover:translate-x-1" />
                 </button>
               )}

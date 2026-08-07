@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { AdminShell } from '@/components/admin/AdminShell';
+import { BiodataImport } from '@/components/admin/BiodataImport';
 import { ProfileEditor } from '@/components/admin/ProfileEditor';
 import { Badge, EmptyRow, Pager, Panel, SearchBox, TableWrap, Td, Th } from '@/components/admin/ui';
 import { Icon } from '@/components/Icon';
@@ -21,6 +22,7 @@ export default function AdminProfilesPage() {
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState<Profile | null>(null);
   const [creating, setCreating] = useState(false);
+  const [importing, setImporting] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -77,13 +79,22 @@ export default function AdminProfilesPage() {
       title="Directory Profiles"
       description="The pool the matching algorithm ranks over"
       actions={
-        <button
-          onClick={() => setCreating(true)}
-          className="flex items-center gap-2 rounded-lg bg-secondary px-4 py-2 font-body text-label-md uppercase text-on-secondary shadow-sm transition-colors hover:bg-on-secondary-container"
-        >
-          <Icon name="add" className="text-[18px]" />
-          Add Profile
-        </button>
+        <>
+          <button
+            onClick={() => setImporting(true)}
+            className="flex items-center gap-2 rounded-lg border-[1.5px] border-outline-variant px-4 py-2 font-body text-label-md uppercase text-on-surface-variant transition-colors hover:border-secondary hover:text-secondary"
+          >
+            <Icon name="upload_file" className="text-[18px]" />
+            Import Biodata
+          </button>
+          <button
+            onClick={() => setCreating(true)}
+            className="flex items-center gap-2 rounded-lg bg-secondary px-4 py-2 font-body text-label-md uppercase text-on-secondary shadow-sm transition-colors hover:bg-on-secondary-container"
+          >
+            <Icon name="add" className="text-[18px]" />
+            Add Profile
+          </button>
+        </>
       }
     >
       {error && (
@@ -195,6 +206,10 @@ export default function AdminProfilesPage() {
           <Pager page={page} total={result.total} pageSize={PAGE_SIZE} onPage={setPage} busy={loading} />
         )}
       </Panel>
+
+      {importing && (
+        <BiodataImport onClose={() => setImporting(false)} onImported={load} />
+      )}
 
       {(editing || creating) && (
         <ProfileEditor

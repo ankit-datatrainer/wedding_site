@@ -18,6 +18,9 @@ import {
   updateProfile,
 } from '../store.js';
 import { publicUser, requireAdmin, requireAuth, signToken } from '../auth.js';
+import { config } from '../config.js';
+import { missingRequired, parseBiodataPdf, toProfileRow } from '../biodata.js';
+import { biodataUpload, uploadErrorMessage } from './uploads.js';
 
 const router = Router();
 
@@ -151,6 +154,73 @@ router.post('/profiles', async (req, res, next) => {
   } catch (err) {
     next(err);
   }
+});
+
+/**
+ * Bulk-imports profiles from biodata PDFs.
+ *
+ * Each file is independent: one unreadable PDF in a batch of twenty must not
+ * lose the other nineteen, so failures are collected and reported per-file
+ * rather than aborting the request. Returns 207 when the batch is mixed.
+ */
+router.post('/profiles/import-biodata', (req, res) => {
+  biodataUpload.array('biodata', 20)(req, res, async (err) => {
+    if (err) {
+      return res.status(400).json({ error: uploadErrorMessage(err, config.maxBiodataMb) });
+    }
+    const files = req.files || [];
+    if (!files.length) return res.status(400).json({ error: 'No PDFs were received.' });
+
+    const imported = [];
+    const failures = [];
+
+    for (const file of files) {
+      const filename = file.originalname || 'biodata.pdf';
+      try {
+        const { fields, warnings } = await parseBiodataPdf(file.buffer);
+
+        const missing = missingRequired(fields);
+        if (missing.length) {
+          failures.push({
+            filename,
+            error: `Could not read ${missing.join(', ')} from this PDF.`,
+          });
+          continue;
+        }
+
+        // Runs through the same schema as a hand-typed profile, so an import
+        // can never write a row the admin form itself would have rejected.
+        const parsedRow = profileSchema.safeParse(toProfileRow(fields));
+        if (!parsedRow.success) {
+          failures.push({ filename, error: parsedRow.error.issues[0].message });
+          continue;
+        }
+
+        // profileSchema has no `city` key, so Zod strips it — re-derive it
+        // the same way POST /profiles does, or /browse's location filter
+        // would never surface imported rows.
+        const created = await createProfile({
+          ...parsedRow.data,
+          city: fields.city || (parsedRow.data.location || '').split(',')[0].trim(),
+        });
+        imported.push({ filename, profile: created, warnings });
+      } catch (fileErr) {
+        failures.push({
+          filename,
+          error:
+            fileErr.status === 422
+              ? fileErr.message
+              : 'That file could not be read as a PDF.',
+        });
+      }
+    }
+
+    res.status(failures.length && imported.length ? 207 : failures.length ? 400 : 201).json({
+      imported,
+      failures,
+      summary: { total: files.length, imported: imported.length, failed: failures.length },
+    });
+  });
 });
 
 router.patch('/profiles/:id', async (req, res, next) => {

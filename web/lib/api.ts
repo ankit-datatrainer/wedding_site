@@ -72,6 +72,35 @@ export async function uploadPhoto(file: File): Promise<{ url: string; photos: st
   return data;
 }
 
+export type BiodataDraft = {
+  firstName: string;
+  lastName: string;
+  gender: string;
+  dob: string;
+  email: string;
+  phone: string;
+  details: Record<string, string>;
+};
+
+/**
+ * Parses a biodata PDF into form values.
+ *
+ * Unauthenticated by design: the registration wizard calls this before the
+ * account exists. Nothing is stored server-side — the response is the only
+ * thing that survives the request.
+ */
+export async function parseBiodata(
+  file: File
+): Promise<{ draft: BiodataDraft; warnings: string[]; filled: number }> {
+  const form = new FormData();
+  form.append('biodata', file);
+
+  const res = await fetch(`${API_URL}/api/uploads/biodata`, { method: 'POST', body: form });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(data?.error || `Could not read that PDF (${res.status})`);
+  return data;
+}
+
 export async function deletePhoto(url: string): Promise<{ photos: string[]; photo_url: string | null }> {
   return api('/api/uploads/photo', { method: 'DELETE', auth: true, body: JSON.stringify({ url }) });
 }
