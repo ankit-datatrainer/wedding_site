@@ -241,6 +241,97 @@ await test('maps alias labels (Qualification, Profession)', () => {
   assert.equal(s.educationLevel, 'Masters');
 });
 
+section('Designed biodata: no colons, no Name row, no Gender row');
+
+// Mirrors the structure of a real professionally-typeset biodata: a title
+// with the name alone, colon-free "Label Value" table rows, a label split
+// across two lines by a narrow column, bulleted multi-line values, and
+// gender stated nowhere but the prose. Data is invented — the layout is the
+// thing under test.
+const DESIGNED = [
+  '“Om Shri Ganeshay Namah”',
+  'Kavya Iyengar',
+  'Personal Information',
+  'Date of Birth 21st March 1994',
+  'Place of Birth Mysuru, Karnataka',
+  'Height 163 cms ~ 5.4 feet',
+  'Complexion Fair',
+  'About Kavya Kavya is a thoughtful and independent person who values her',
+  'family deeply. She enjoys hiking and classical dance, and she is',
+  'looking for a partner who shares her curiosity.',
+  'Academics  Master of Design, National Institute of Design,',
+  'Ahmedabad (2018)',
+  'Professional',
+  'Summary',
+  ' Joined Titan Company, Bengaluru in 2018 as a Design Lead.',
+  ' Currently heading the accessories design studio.',
+  'Languages Spoken  Kannada and English',
+  'Salaried Income  Rs. 32 LPA',
+  '',
+  'About Family',
+  'Gotra  Vadhula',
+  'Father Sridhar Iyengar',
+  'Mother Lakshmi Iyengar',
+  'Younger Brother Rohit Iyengar',
+  'Residence  Family Residence – Jayanagar, Bengaluru KA',
+  'Contact Details  Sridhar Iyengar, Father: +919845012345',
+  'kavya.example@example.com',
+];
+
+const designed = await parseBiodataPdf(makePdf(DESIGNED));
+const d = designed.fields;
+
+await test('recovers the name from a bare title line', () => {
+  assert.equal(d.firstName, 'Kavya');
+  assert.equal(d.lastName, 'Iyengar');
+});
+await test('does not mistake a heading or invocation for the name', () => {
+  assert.notEqual(d.name, 'Om Shri Ganeshay Namah');
+  assert.notEqual(d.name, 'Personal Information');
+});
+await test('infers gender from pronouns when no Gender row exists', () =>
+  assert.equal(d.gender, 'female'));
+await test('reads colon-free "Label Value" rows', () => {
+  assert.equal(d.dob, '1994-03-21');
+  assert.equal(d.fatherName, 'Sridhar Iyengar');
+  assert.equal(d.motherName, 'Lakshmi Iyengar');
+  assert.equal(d.gothram, 'Vadhula');
+  assert.equal(d.annualIncome, 'Rs. 32 LPA');
+  assert.equal(d.motherTongue, 'Kannada and English');
+});
+await test('does not swallow the value into the label ("Height 163 cms")', () =>
+  assert.equal(d.heightCm, '163'));
+await test('reads a label split across two lines ("Professional" / "Summary")', () => {
+  assert.ok(d.occupation, 'occupation was not captured at all');
+  assert.match(d.occupation, /Titan Company/);
+});
+await test('a two-line label is not absorbed by the preceding field', () =>
+  assert.doesNotMatch(d.highestEducation || '', /Titan Company/));
+await test('joins bulleted multi-line values', () =>
+  assert.match(d.highestEducation, /National Institute of Design/));
+await test('strips the duplicated name from "About <Name>"', () => {
+  assert.ok(d.aboutMe.startsWith('Kavya is'), `got: ${d.aboutMe.slice(0, 40)}`);
+  assert.match(d.aboutMe, /classical dance/);
+});
+await test('derives city and state from a residence line', () => {
+  assert.equal(d.city, 'Bengaluru');
+  assert.equal(d.state, 'Karnataka');
+});
+await test('picks up the contact number and email', () => {
+  assert.ok(d.phone.includes('9845012345'));
+  assert.equal(d.email, 'kavya.example@example.com');
+});
+await test('a wrapped address line is not mistaken for a College row', () =>
+  assert.doesNotMatch(d.college || '', /Ahmedabad \(2018\)/));
+await test('produces a complete, importable profile', () =>
+  assert.deepEqual(missingRequired(d), []));
+await test('truncates long values on a word boundary', () => {
+  for (const [key, value] of Object.entries(d)) {
+    if (typeof value !== 'string') continue;
+    assert.ok(!/\s$/.test(value), `${key} ends in whitespace`);
+  }
+});
+
 section('Enum safety (never emit a value the API would reject)');
 
 const DIET_CASES = [
@@ -367,6 +458,38 @@ await test('an unrelated document yields no fields rather than junk', async () =
   assert.equal(fields.dob, undefined);
   assert.ok(missingRequired(fields).length > 0);
 });
+
+/* ------------------------------------------------------- real-file check -- */
+
+// Optional smoke test against a real biodata on disk:
+//
+//   BIODATA_PDF="/path/to/some-biodata.pdf" npm run test:biodata
+//
+// Deliberately opt-in and never committed. Real biodata carry a named
+// person's date of birth, phone number and family details; those belong
+// nowhere near a git repository. The synthetic fixture above covers the same
+// layout, so nothing here depends on the file being present.
+const realPdf = process.env.BIODATA_PDF;
+if (realPdf) {
+  section(`Real biodata file (${realPdf})`);
+  const { readFileSync } = await import('node:fs');
+
+  let real;
+  await test('parses without throwing', async () => {
+    real = await parseBiodataPdf(readFileSync(realPdf));
+  });
+  await test('extracts enough to create a profile', () => {
+    assert.deepEqual(missingRequired(real.fields), []);
+  });
+  await test('produces a schema-valid profile row', () => {
+    const row = toProfileRow(real.fields);
+    assert.ok(row.name && row.gender && row.age);
+  });
+  console.log(
+    `\n  extracted ${Object.keys(real?.fields || {}).length} fields, ` +
+      `${real?.warnings.length ?? 0} warning(s)`
+  );
+}
 
 /* ---------------------------------------------------------------- summary -- */
 

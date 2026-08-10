@@ -383,8 +383,6 @@ type Step = {
     ) => void;
   }) => React.ReactNode;
   validate?: (form: FormState) => string | null;
-  /** On an optional step, whether Continue should read "Skip For Now". */
-  skipWhen?: (ctx: { photos: Photo[]; biodata: BiodataSummary | null }) => boolean;
 };
 
 const STEPS: Step[] = [
@@ -396,7 +394,6 @@ const STEPS: Step[] = [
     render: ({ biodata, onBiodataParsed }) => (
       <BiodataStep summary={biodata} onParsed={onBiodataParsed} />
     ),
-    skipWhen: ({ biodata }) => !biodata,
   },
   {
     title: 'Who are you creating this profile for?',
@@ -424,7 +421,7 @@ const STEPS: Step[] = [
     icon: 'badge',
     render: ({ form, set }) => (
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-        <Field label="First Name" placeholder="Enter first name" value={form.firstName} onChange={(e) => set('firstName', e.target.value)} autoFocus />
+        <Field label="First Name" placeholder="Enter first name" value={form.firstName} onChange={(e) => set('firstName', e.target.value)} />
         <Field label="Last Name" placeholder="Enter last name" value={form.lastName} onChange={(e) => set('lastName', e.target.value)} />
       </div>
     ),
@@ -482,7 +479,7 @@ const STEPS: Step[] = [
     icon: 'auto_awesome',
     render: ({ form, setDetail }) => (
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-        <Field label="Religion" placeholder="e.g. Hindu" value={form.details.religion ?? ''} onChange={(e) => setDetail('religion', e.target.value)} autoFocus />
+        <Field label="Religion" placeholder="e.g. Hindu" value={form.details.religion ?? ''} onChange={(e) => setDetail('religion', e.target.value)} />
         <Field label="Community / Caste" placeholder="e.g. Brahmin" value={form.details.community ?? ''} onChange={(e) => setDetail('community', e.target.value)} />
         <Field label="Mother Tongue" value={form.details.motherTongue ?? ''} onChange={(e) => setDetail('motherTongue', e.target.value)} />
         <Field label="Gothram (optional)" value={form.details.gothram ?? ''} onChange={(e) => setDetail('gothram', e.target.value)} />
@@ -499,7 +496,7 @@ const STEPS: Step[] = [
     icon: 'location_on',
     render: ({ form, setDetail }) => (
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-        <Field label="Country" value={form.details.country ?? ''} onChange={(e) => setDetail('country', e.target.value)} autoFocus />
+        <Field label="Country" value={form.details.country ?? ''} onChange={(e) => setDetail('country', e.target.value)} />
         <Field label="State" value={form.details.state ?? ''} onChange={(e) => setDetail('state', e.target.value)} />
         <Field label="City" value={form.details.city ?? ''} onChange={(e) => setDetail('city', e.target.value)} />
         <Field label="PIN Code (optional)" value={form.details.pincode ?? ''} onChange={(e) => setDetail('pincode', e.target.value)} />
@@ -517,7 +514,7 @@ const STEPS: Step[] = [
     icon: 'school',
     render: ({ form, setDetail }) => (
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-        <Field label="Highest Education" placeholder="e.g. B.Tech, IIT Delhi" value={form.details.highestEducation ?? ''} onChange={(e) => setDetail('highestEducation', e.target.value)} autoFocus />
+        <Field label="Highest Education" placeholder="e.g. B.Tech, IIT Delhi" value={form.details.highestEducation ?? ''} onChange={(e) => setDetail('highestEducation', e.target.value)} />
         <Field label="College / University (optional)" value={form.details.college ?? ''} onChange={(e) => setDetail('college', e.target.value)} />
         <Field label="Occupation" placeholder="e.g. Software Engineer" value={form.details.occupation ?? ''} onChange={(e) => setDetail('occupation', e.target.value)} />
         <Field label="Employer (optional)" value={form.details.employer ?? ''} onChange={(e) => setDetail('employer', e.target.value)} />
@@ -576,7 +573,6 @@ const STEPS: Step[] = [
     icon: 'add_a_photo',
     optional: true,
     render: ({ photos, setPhotos }) => <PhotoStep photos={photos} setPhotos={setPhotos} />,
-    skipWhen: ({ photos }) => photos.length === 0,
   },
   {
     title: 'Create your login',
@@ -584,7 +580,7 @@ const STEPS: Step[] = [
     icon: 'lock',
     render: ({ form, set, showPassword, setShowPassword }) => (
       <div className="flex flex-col gap-5">
-        <Field label="Phone Number" type="tel" placeholder="+91 98765 43210" value={form.phone} onChange={(e) => set('phone', e.target.value)} autoFocus />
+        <Field label="Phone Number" type="tel" placeholder="+91 98765 43210" value={form.phone} onChange={(e) => set('phone', e.target.value)} />
         <Field label="Email Address" type="email" autoComplete="email" placeholder="you@example.com" value={form.email} onChange={(e) => set('email', e.target.value)} />
         <label className="flex flex-col gap-2">
           <span className="font-body text-label-md text-on-surface-variant">Password</span>
@@ -615,6 +611,28 @@ const STEPS: Step[] = [
       if (f.password.length < 8) return 'Password must be at least 8 characters.';
       return null;
     },
+  },
+];
+
+/**
+ * The twelve sections above are presented as two pages, not twelve screens.
+ *
+ * A twelve-step progress bar reads as a chore before anyone has typed a
+ * character, and the whole point of the biodata upload is that most of these
+ * fields arrive already filled — clicking Continue eleven times through
+ * pre-filled screens is worse than scrolling one page. Sections keep their
+ * own headings and validators; only the pagination changed.
+ */
+const PAGES = [
+  {
+    title: 'Your basic details',
+    subtitle: 'Upload a biodata to fill this in automatically, or type it in yourself.',
+    sections: STEPS.slice(0, 6),
+  },
+  {
+    title: 'Background, photos & login',
+    subtitle: 'Where you live, what you do, your family — and the login you’ll use.',
+    sections: STEPS.slice(6),
   },
 ];
 
@@ -668,28 +686,39 @@ export default function RegisterPage() {
     setError('');
   }
 
-  const total = STEPS.length;
-  const current = STEPS[step];
+  const total = PAGES.length;
+  const current = PAGES[step];
   const isLast = step === total - 1;
+
+  /** First failing section on the current page, so the message names it. */
+  function validatePage() {
+    for (const section of current.sections) {
+      const message = section.validate?.(form);
+      if (message) return message;
+    }
+    return null;
+  }
 
   function goNext() {
     setError('');
-    const message = current.validate?.(form);
+    const message = validatePage();
     if (message) {
       setError(message);
       return;
     }
     setStep((s) => Math.min(s + 1, total - 1));
+    if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   function goBack() {
     setError('');
     setStep((s) => Math.max(s - 1, 0));
+    if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
-    const message = current.validate?.(form);
+    const message = validatePage();
     if (message) {
       setError(message);
       return;
@@ -762,7 +791,6 @@ export default function RegisterPage() {
             <div className="mb-3 flex items-center justify-between">
               <span className="font-body text-label-md uppercase tracking-wide text-on-surface-variant">
                 Step {step + 1} of {total}
-                {current.optional && <span className="ml-1.5 text-secondary">· Optional</span>}
               </span>
               <span className="font-body text-label-md text-on-surface-variant">
                 {Math.round(progress)}%
@@ -778,31 +806,51 @@ export default function RegisterPage() {
 
           <form onSubmit={submit} className="px-6 py-8 sm:px-10 sm:py-10">
             <div key={step} className="animate-step-in">
-              <div className="mb-8 flex items-start gap-4">
-                <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-secondary-container/20">
-                  <Icon name={current.icon} className="text-[24px] text-secondary" />
-                </span>
-                <div>
-                  <h1 className="font-heading text-[24px] leading-tight text-on-surface sm:text-headline-md">
-                    {current.title}
-                  </h1>
-                  <p className="mt-1 font-body text-body-md text-on-surface-variant">
-                    {current.subtitle}
-                  </p>
-                </div>
-              </div>
+              <header className="mb-8">
+                <h1 className="font-heading text-[24px] leading-tight text-on-surface sm:text-headline-md">
+                  {current.title}
+                </h1>
+                <p className="mt-1 font-body text-body-md text-on-surface-variant">
+                  {current.subtitle}
+                </p>
+              </header>
 
-              {current.render({
-                form,
-                set,
-                setDetail,
-                photos,
-                setPhotos,
-                showPassword,
-                setShowPassword,
-                biodata,
-                onBiodataParsed,
-              })}
+              <div className="flex flex-col gap-9">
+                {current.sections.map((section) => (
+                  <section key={section.title}>
+                    <div className="mb-5 flex items-start gap-3">
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-secondary-container/20">
+                        <Icon name={section.icon} className="text-[20px] text-secondary" />
+                      </span>
+                      <div className="min-w-0">
+                        <h2 className="font-heading text-[18px] leading-tight text-on-surface">
+                          {section.title}
+                          {section.optional && (
+                            <span className="ml-2 font-body text-label-md uppercase tracking-wide text-secondary">
+                              Optional
+                            </span>
+                          )}
+                        </h2>
+                        <p className="mt-0.5 font-body text-label-md text-on-surface-variant">
+                          {section.subtitle}
+                        </p>
+                      </div>
+                    </div>
+
+                    {section.render({
+                      form,
+                      set,
+                      setDetail,
+                      photos,
+                      setPhotos,
+                      showPassword,
+                      setShowPassword,
+                      biodata,
+                      onBiodataParsed,
+                    })}
+                  </section>
+                ))}
+              </div>
             </div>
 
             {error && (
@@ -856,9 +904,7 @@ export default function RegisterPage() {
                   onClick={goNext}
                   className="group flex flex-1 items-center justify-center gap-2 rounded-lg bg-secondary px-8 py-3.5 font-body text-label-lg uppercase text-on-secondary shadow-md transition-colors hover:bg-on-secondary-container"
                 >
-                  {current.optional && current.skipWhen?.({ photos, biodata })
-                    ? 'Skip For Now'
-                    : 'Continue'}
+                  Continue
                   <Icon name="arrow_forward" className="text-[18px] transition-transform group-hover:translate-x-1" />
                 </button>
               )}

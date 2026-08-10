@@ -32,3 +32,7 @@ next-env.d.ts
 
 # member-uploaded photos — real user data, never committed
 server/uploads/
+
+# biodata PDFs — real ones carry a named person's DOB, phone and family
+# details. Test against them locally with BIODATA_PDF=... npm run test:biodata
+*.pdf

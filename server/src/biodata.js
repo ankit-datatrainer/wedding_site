@@ -57,7 +57,7 @@ const LABELS = [
   { field: 'drinking', labels: ['drinking', 'drink', 'drinking habits', 'alcohol'] },
   { field: 'disability', labels: ['disability', 'physical status', 'handicap'] },
 
-  { field: 'motherTongue', labels: ['mother tongue', 'mothertongue', 'native language', 'language'] },
+  { field: 'motherTongue', labels: ['mother tongue', 'mothertongue', 'native language', 'language', 'languages', 'languages spoken', 'languages known'] },
   { field: 'religion', labels: ['religion', 'dharma'] },
   { field: 'community', labels: ['community', 'caste', 'sub caste', 'sub-caste', 'subcaste', 'jati'] },
   { field: 'gothram', labels: ['gothram', 'gotra', 'gothra', 'gotram'] },
@@ -68,25 +68,25 @@ const LABELS = [
   { field: 'country', labels: ['country'] },
   { field: 'state', labels: ['state'] },
   { field: 'city', labels: ['city', 'current city', 'residing city', 'location', 'place'] },
-  { field: 'address', labels: ['address', 'residence', 'residential address', 'current address', 'permanent address'] },
+  { field: 'address', labels: ['address', 'residence', 'residential address', 'current address', 'permanent address', 'family residence'] },
   { field: 'pincode', labels: ['pincode', 'pin code', 'postal code', 'zip'] },
 
-  { field: 'highestEducation', labels: ['education', 'qualification', 'educational qualification', 'highest education', 'highest qualification', 'degree'] },
+  { field: 'highestEducation', labels: ['education', 'qualification', 'educational qualification', 'highest education', 'highest qualification', 'degree', 'academics', 'academic qualification', 'education details'] },
   { field: 'college', labels: ['college', 'university', 'institute', 'institution', 'alma mater'] },
-  { field: 'occupation', labels: ['occupation', 'profession', 'job', 'designation', 'working as', 'job title'] },
+  { field: 'occupation', labels: ['occupation', 'profession', 'job', 'designation', 'working as', 'job title', 'professional summary', 'work experience', 'professional details', 'career'] },
   { field: 'employer', labels: ['employer', 'company', 'organisation', 'organization', 'working at', 'company name', 'employed at'] },
-  { field: 'annualIncome', labels: ['income', 'annual income', 'salary', 'annual salary', 'package', 'ctc'] },
+  { field: 'annualIncome', labels: ['income', 'annual income', 'salary', 'annual salary', 'package', 'ctc', 'salaried income', 'income per annum'] },
 
   { field: 'fatherName', labels: ["father's name", 'father name', 'fathers name', 'father'] },
   { field: 'fatherOccupation', labels: ["father's occupation", 'father occupation', 'fathers occupation', "father's profession"] },
   { field: 'motherName', labels: ["mother's name", 'mother name', 'mothers name', 'mother'] },
   { field: 'motherOccupation', labels: ["mother's occupation", 'mother occupation', 'mothers occupation', "mother's profession"] },
-  { field: 'siblings', labels: ['siblings', 'brothers', 'sisters', 'brothers/sisters', 'brother/sister', 'no of siblings', 'siblings details'] },
+  { field: 'siblings', labels: ['siblings', 'brothers', 'sisters', 'brothers/sisters', 'brother/sister', 'no of siblings', 'siblings details', 'younger brother', 'elder brother', 'younger sister', 'elder sister', 'brother', 'sister'] },
   { field: 'familyType', labels: ['family type', 'type of family'] },
   { field: 'familyStatus', labels: ['family status'] },
   { field: 'familyValues', labels: ['family values'] },
 
-  { field: 'phone', labels: ['phone', 'mobile', 'contact', 'contact no', 'contact number', 'mobile no', 'mobile number', 'phone no', 'cell'] },
+  { field: 'phone', labels: ['phone', 'mobile', 'contact', 'contact no', 'contact number', 'mobile no', 'mobile number', 'phone no', 'cell', 'contact details', 'contact detail'] },
   { field: 'email', labels: ['email', 'e-mail', 'email id', 'email address'] },
 
   { field: 'aboutMe', labels: ['about me', 'about', 'about myself', 'brief', 'introduction', 'hobbies', 'interests'] },
@@ -294,14 +294,88 @@ function cleanName(raw) {
 
 /* ------------------------------------------------------------------ parse -- */
 
-const VALUE_SEPARATOR = /\s*[:：–—-]\s+|\s*:\s*/;
+// Fields whose value is prose and routinely wraps across several lines. Only
+// these absorb continuation lines; doing it for short fields like `height`
+// would swallow the row that follows.
+const MULTILINE_FIELDS = new Set([
+  'aboutMe', 'partnerExpectations', 'highestEducation', 'college', 'occupation',
+  'employer', 'siblings', 'address', 'fatherOccupation', 'motherOccupation',
+]);
+
+// Bullet glyphs and list markers PDF extraction leaves at the head of a line.
+const BULLET = /^[\s••▪●*\-–—]+|^\d+[.)]\s+/;
+
+const stripBullet = (line) => line.replace(BULLET, '').trim();
+
+/**
+ * Finds a label at the very start of a line, longest match first.
+ *
+ * This is what makes colon-free biodata work: real documents are full of
+ * table rows that extract as "Date of Birth 30th August 1995", with no
+ * separator at all between label and value.
+ */
+function matchLabelPrefix(line) {
+  const words = line.split(' ').filter(Boolean);
+  const max = Math.min(4, words.length - 1); // always leave at least one word of value
+  for (let n = max; n >= 1; n -= 1) {
+    const candidate = words.slice(0, n);
+
+    // normaliseLabel strips digits, so "Height 179" would otherwise reduce to
+    // "height" and swallow the value it was supposed to introduce.
+    if (candidate.some((w) => /\d/.test(w))) continue;
+
+    // A label word carrying a trailing comma is prose, not a table row:
+    // "University, Tempe, Arizona" is a wrapped address, not a College field.
+    if (/[,;]$/.test(candidate[n - 1])) continue;
+
+    const field = matchLabel(candidate.join(' '));
+    if (!field) continue;
+    const value = words.slice(n).join(' ').trim();
+    if (!value) continue;
+
+    // A one-word label matching mid-sentence prose is the main false-positive
+    // risk ("Mother of two children moved to Delhi"). Real table rows start
+    // their value with a capital, a digit or a currency/symbol; prose
+    // continues in lower case. Multi-word labels are specific enough to trust.
+    if (n === 1 && !/^[A-Z0-9₹+"']/.test(value)) continue;
+
+    return { field, value };
+  }
+  return null;
+}
+
+/** Any way this line could be read as the start of a labelled row. */
+function lineStartsRow(line) {
+  const bare = stripBullet(line);
+  const colon = bare.search(/[:：]/);
+  if (colon > 0 && matchLabel(bare.slice(0, colon))) return true;
+  if (matchLabel(bare)) return true;
+  return Boolean(matchLabelPrefix(bare));
+}
+
+/** Whether a label begins at `index`, including one split across two lines. */
+function rowStartsAt(lines, index) {
+  const line = stripBullet(lines[index] || '');
+  if (!line) return false;
+  if (lineStartsRow(line)) return true;
+
+  // "Professional" / "Summary" only reads as a label once joined. Without
+  // this, a preceding multi-line field absorbs the label and the section it
+  // introduces is lost entirely.
+  if (index + 1 < lines.length && /^[A-Za-z\s]{2,20}$/.test(line)) {
+    const joined = `${line} ${stripBullet(lines[index + 1])}`;
+    if (matchLabel(joined) || matchLabelPrefix(joined)) return true;
+  }
+  return false;
+}
 
 /**
  * Splits document text into `{ field, value }` rows.
  *
- * Handles both inline rows ("Height : 5'10\"") and the split layout PDF text
- * extraction often produces from tables, where the label and its value land
- * on consecutive lines.
+ * Handles the four layouts that turn up in practice: inline
+ * ("Height : 5'10\""), colon-free table rows ("Height 179 cms"),
+ * column-split tables where the label and value land on consecutive lines,
+ * and prose values that wrap over several lines.
  */
 function collectRows(text) {
   const lines = text
@@ -310,44 +384,165 @@ function collectRows(text) {
     .filter(Boolean);
 
   const rows = [];
+  const push = (field, value, index) => {
+    const v = value.trim();
+    if (v) rows.push({ field, value: v, index });
+  };
+
+  /** Absorbs following non-label lines into a prose value. */
+  const absorb = (field, startIndex) => {
+    if (!MULTILINE_FIELDS.has(field)) return { extra: '', consumed: 0 };
+    const parts = [];
+    let j = startIndex;
+    while (j < lines.length && parts.length < 12 && !rowStartsAt(lines, j)) {
+      parts.push(stripBullet(lines[j]));
+      j += 1;
+    }
+    return { extra: parts.join(' '), consumed: j - startIndex };
+  };
+
   for (let i = 0; i < lines.length; i += 1) {
-    const line = lines[i];
+    const line = stripBullet(lines[i]);
+    if (!line) continue;
+
+    let field = null;
+    let value = '';
 
     const colon = line.search(/[:：]/);
-    if (colon > 0) {
-      const field = matchLabel(line.slice(0, colon));
-      if (field) {
-        let value = line.slice(colon + 1).trim();
-        // "Label:" with the value wrapped onto the next line.
-        if (!value && lines[i + 1] && !matchLabel(lines[i + 1].split(/[:：]/)[0])) {
-          value = lines[i + 1];
-          i += 1;
-        }
-        if (value) rows.push({ field, value });
-        continue;
+    if (colon > 0 && matchLabel(line.slice(0, colon))) {
+      field = matchLabel(line.slice(0, colon));
+      value = line.slice(colon + 1).trim();
+    } else if (matchLabel(line)) {
+      // The whole line is a label; its value is on the following line(s).
+      field = matchLabel(line);
+      value = '';
+    } else {
+      const prefix = matchLabelPrefix(line);
+      if (prefix) {
+        field = prefix.field;
+        value = prefix.value;
       }
     }
 
-    // A whole line that is just a label — value follows on the next line.
-    const bare = matchLabel(line);
-    if (bare && lines[i + 1]) {
-      const next = lines[i + 1];
-      const nextIsLabel = matchLabel(next.split(/[:：]/)[0]) || matchLabel(next);
-      if (!nextIsLabel) {
-        rows.push({ field: bare, value: next });
+    // A label wrapped across two lines by a narrow table column — "Professional"
+    // / "Summary", "Maternal" / "Grandparents". Only tried when the line alone
+    // means nothing, and only for a short, digit-free fragment.
+    if (!field && i + 1 < lines.length && /^[A-Za-z\s]{2,20}$/.test(line)) {
+      const joined = `${line} ${stripBullet(lines[i + 1])}`;
+      const twoLine = matchLabel(joined) || matchLabelPrefix(joined)?.field;
+      if (twoLine) {
+        field = twoLine;
+        value = matchLabel(joined) ? '' : matchLabelPrefix(joined).value;
         i += 1;
-        continue;
       }
     }
 
-    // Separator-delimited row without a colon: "Height   5'10\"".
-    const dash = line.match(/^(.{2,30}?)\s{2,}(.+)$/) || line.match(/^(.{2,30}?)\s+[–—-]\s+(.+)$/);
-    if (dash) {
-      const field = matchLabel(dash[1]);
-      if (field && dash[2].trim()) rows.push({ field, value: dash[2].trim() });
+    if (!field) continue;
+
+    // A bare label takes the next line as its value, provided that line is
+    // not itself a labelled row.
+    if (!value && i + 1 < lines.length && !rowStartsAt(lines, i + 1)) {
+      value = stripBullet(lines[i + 1]);
+      i += 1;
     }
+
+    const { extra, consumed } = absorb(field, i + 1);
+    if (extra) {
+      value = `${value} ${extra}`.trim();
+      i += consumed;
+    }
+
+    push(field, value, i);
   }
+
   return rows;
+}
+
+/* --------------------------------------------------------------- inference -- */
+
+// Words that look like a name to a naive check but head a section instead.
+const HEADING_WORDS = new RegExp(
+  '\\b(bio\\s*data|biodata|marriage|matrimonial|personal|information|details|profile|' +
+    'resume|curriculum|vitae|about|family|contact|introduction|namah|namaha|shri|sri|' +
+    'ganesh|ganesha|swastik|om)\\b',
+  'i'
+);
+
+/**
+ * Recovers the candidate's name when no "Name:" row exists.
+ *
+ * Many designed biodata put the name alone at the top as a title. Restricted
+ * to the opening lines and to things that actually look like a person's name,
+ * because a wrong name is worse than none.
+ */
+function inferName(lines) {
+  for (const raw of lines.slice(0, 12)) {
+    const line = raw.replace(/[“”"‘’']/g, '').trim();
+    if (!line || line.length > 60) continue;
+    if (HEADING_WORDS.test(line)) continue;
+    if (lineStartsRow(line)) continue;
+    if (/[:：0-9@]/.test(line)) continue;
+
+    const words = line.split(/\s+/);
+    if (words.length < 2 || words.length > 4) continue;
+    if (!words.every((w) => /^[A-Z][a-z'’-]+\.?$/.test(w))) continue;
+
+    return line;
+  }
+  return undefined;
+}
+
+/**
+ * Recovers gender from third-person pronouns in the prose.
+ *
+ * Plenty of biodata never state it — they just describe the candidate. Needs
+ * a decisive margin, since a wrong gender puts someone in front of entirely
+ * the wrong audience.
+ */
+function inferGender(text) {
+  const count = (re) => (text.match(re) || []).length;
+  const male = count(/\b(he|his|him|himself|son|groom|bachelor|brother)\b/gi);
+  const female = count(/\b(she|her|hers|herself|daughter|bride|spinster|sister)\b/gi);
+
+  if (male >= 3 && male >= female * 2) return 'male';
+  if (female >= 3 && female >= male * 2) return 'female';
+  return undefined;
+}
+
+// Two-letter codes and full names for the Indian states that show up in
+// addresses, used to split a trailing "Noida UP" into city and state.
+const STATES = new Map([
+  ['up', 'Uttar Pradesh'], ['mp', 'Madhya Pradesh'], ['hp', 'Himachal Pradesh'],
+  ['ap', 'Andhra Pradesh'], ['tn', 'Tamil Nadu'], ['wb', 'West Bengal'],
+  ['mh', 'Maharashtra'], ['dl', 'Delhi'], ['ncr', 'Delhi NCR'], ['hr', 'Haryana'],
+  ['pb', 'Punjab'], ['rj', 'Rajasthan'], ['gj', 'Gujarat'], ['ka', 'Karnataka'],
+  ['kl', 'Kerala'], ['ts', 'Telangana'], ['tg', 'Telangana'], ['od', 'Odisha'],
+  ['jh', 'Jharkhand'], ['cg', 'Chhattisgarh'], ['uk', 'Uttarakhand'],
+  ['br', 'Bihar'], ['as', 'Assam'], ['ga', 'Goa'],
+]);
+
+/** Pulls a city (and state, if present) out of a free-form address. */
+function cityFromAddress(address) {
+  const chunks = address
+    .split(',')
+    .map((c) => c.replace(/[–—-]/g, ' ').replace(/\s+/g, ' ').trim())
+    .filter(Boolean);
+  if (!chunks.length) return {};
+
+  const last = chunks[chunks.length - 1];
+  const words = last.split(' ');
+  const tail = words[words.length - 1].toLowerCase().replace(/[^a-z]/g, '');
+
+  if (words.length >= 2 && STATES.has(tail)) {
+    return { city: words.slice(0, -1).join(' '), state: STATES.get(tail) };
+  }
+  if (STATES.has(tail) && chunks.length >= 2) {
+    return { city: chunks[chunks.length - 2], state: STATES.get(tail) };
+  }
+  // No recognisable state — the last chunk is the best city candidate, as
+  // long as it reads like a place name rather than a street line.
+  if (words.length <= 3 && /^[A-Za-z\s]+$/.test(last)) return { city: last };
+  return {};
 }
 
 /**
@@ -356,6 +551,11 @@ function collectRows(text) {
  * @returns {{ fields: object, warnings: string[], rows: number }}
  */
 export function parseBiodataText(text) {
+  const lines = text
+    .split(/\r?\n/)
+    .map((l) => l.replace(/\s+/g, ' ').trim())
+    .filter(Boolean);
+
   const raw = {};
   for (const { field, value } of collectRows(text)) {
     // First occurrence wins: biodata repeats labels in partner-preference
@@ -363,14 +563,34 @@ export function parseBiodataText(text) {
     if (raw[field] === undefined) raw[field] = value;
   }
 
+  // Titles and prose carry the name and gender in documents that never label
+  // them. Only consulted where the labelled pass found nothing.
+  if (!raw.name && !raw.firstName) {
+    const inferred = inferName(lines);
+    if (inferred) raw.name = inferred;
+  }
+  if (!raw.gender) {
+    const inferred = inferGender(text);
+    if (inferred) raw.gender = inferred;
+  }
+
   const fields = {};
   const warnings = [];
   const set = (key, value) => {
     if (value !== undefined && value !== null && value !== '') fields[key] = value;
   };
+  // Truncates on a word boundary — schema limits are tight enough that a
+  // hard slice routinely lands mid-word ("Bachelor of Technolog").
   const str = (key, max) => {
     const v = raw[key];
-    if (typeof v === 'string' && v.trim()) set(key, v.trim().slice(0, max));
+    if (typeof v !== 'string' || !v.trim()) return;
+    let out = v.trim();
+    if (out.length > max) {
+      const cut = out.slice(0, max);
+      const space = cut.lastIndexOf(' ');
+      out = (space > max * 0.6 ? cut.slice(0, space) : cut).replace(/[\s,;.-]+$/, '');
+    }
+    set(key, out);
   };
   const enumOf = (key, table, source = key) => {
     if (!raw[source]) return;
@@ -477,8 +697,23 @@ export function parseBiodataText(text) {
     const email = String(raw.email).match(/[\w.+-]+@[\w-]+\.[\w.-]+/)?.[0];
     set('email', email?.toLowerCase());
   }
+  // Contact blocks routinely list an address on its own bare line with no
+  // "Email" label. An email pattern is unambiguous enough to take from
+  // anywhere in the document.
+  if (!fields.email) {
+    const found = text.match(/[\w.+-]+@[\w-]+\.[a-z]{2,}/i)?.[0];
+    set('email', found?.toLowerCase());
+  }
   str('aboutMe', 2000);
   str('partnerExpectations', 2000);
+
+  // "About Abhivyakt" reads as label "About" + value starting with the name,
+  // so the name ends up duplicated at the head of the text. Drop the stray
+  // copy rather than showing the member "Abhivyakt Abhivyakt is a…".
+  if (fields.aboutMe && fields.firstName) {
+    const dup = new RegExp(`^${fields.firstName}\\s+(?=${fields.firstName}\\b)`, 'i');
+    fields.aboutMe = fields.aboutMe.replace(dup, '');
+  }
 
   // Fall back to the free text for a city when only a combined location was
   // given ("Pune, Maharashtra") and no explicit state row existed.
@@ -486,6 +721,14 @@ export function parseBiodataText(text) {
     const [city, ...rest] = fields.city.split(',');
     fields.city = city.trim();
     if (rest.length) set('state', rest.join(',').trim().slice(0, 60));
+  }
+
+  // Many biodata give only a residential address; the city and state the
+  // directory filters on have to come out of it.
+  if (!fields.city && fields.address) {
+    const derived = cityFromAddress(fields.address);
+    set('city', derived.city?.slice(0, 60));
+    if (!fields.state) set('state', derived.state?.slice(0, 60));
   }
 
   return { fields, warnings, rows: Object.keys(raw).length };
