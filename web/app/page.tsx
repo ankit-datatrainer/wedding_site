@@ -1,9 +1,10 @@
+import { cookies } from 'next/headers';
 import Image from 'next/image';
 import Link from 'next/link';
 import { Icon } from '@/components/Icon';
 import { HeroSearch } from '@/components/HeroSearch';
 import { ProfileCard } from '@/components/ProfileCard';
-import { serverApi } from '@/lib/api';
+import { serverApi, TOKEN_KEY } from '@/lib/api';
 import type { Media, Paged, Profile } from '@/lib/types';
 
 const HERO_STATS = [
@@ -31,9 +32,13 @@ const REASONS = [
 ];
 
 export default async function HomePage() {
+  const cookieStore = await cookies();
+  const token = cookieStore.get(TOKEN_KEY)?.value;
+  const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
+
   const [{ photos }, recent] = await Promise.all([
     serverApi<Media>('/api/media', 3600),
-    serverApi<Paged<Profile>>('/api/profiles?pageSize=4&sort=newest', 60),
+    serverApi<Paged<Profile>>('/api/profiles?pageSize=4&sort=newest', token ? false : 60, { headers }),
   ]);
 
   return (

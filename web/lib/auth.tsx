@@ -21,15 +21,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
 
   const refresh = useCallback(async () => {
-    if (!window.localStorage.getItem(TOKEN_KEY)) {
+    const token = window.localStorage.getItem(TOKEN_KEY);
+    if (!token) {
+      document.cookie = `${TOKEN_KEY}=; path=/; max-age=0; SameSite=Lax`;
       setUser(null);
       return;
     }
     try {
       const { user: me } = await api<{ user: User }>('/api/auth/me', { auth: true });
+      document.cookie = `${TOKEN_KEY}=${token}; path=/; max-age=2592000; SameSite=Lax`;
       setUser(me);
     } catch {
       window.localStorage.removeItem(TOKEN_KEY);
+      document.cookie = `${TOKEN_KEY}=; path=/; max-age=0; SameSite=Lax`;
       setUser(null);
     }
   }, []);
@@ -40,6 +44,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const store = (res: { token: string; user: User }) => {
     window.localStorage.setItem(TOKEN_KEY, res.token);
+    document.cookie = `${TOKEN_KEY}=${res.token}; path=/; max-age=2592000; SameSite=Lax`;
     setUser(res.user);
   };
 
@@ -63,6 +68,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = useCallback(() => {
     window.localStorage.removeItem(TOKEN_KEY);
+    document.cookie = `${TOKEN_KEY}=; path=/; max-age=0; SameSite=Lax`;
     setUser(null);
   }, []);
 

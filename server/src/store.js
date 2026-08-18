@@ -121,6 +121,8 @@ async function annotateViewerFlags(items, viewerId) {
   }));
 }
 
+export const OPPOSITE_GENDER = { male: 'female', female: 'male' };
+
 // -------------------------------------------------------------- profiles ---
 
 export async function listProfiles(query = {}, viewerId) {
@@ -128,10 +130,20 @@ export async function listProfiles(query = {}, viewerId) {
   const pageSize = Math.min(48, Math.max(1, Number(query.pageSize) || 6));
   const sort = query.sort || 'newest';
 
+  let targetGender = null;
+  if (viewerId) {
+    const viewer = await getUserById(viewerId);
+    if (viewer && viewer.role !== 'admin' && viewer.gender) {
+      targetGender = OPPOSITE_GENDER[viewer.gender] || null;
+    }
+  }
+
+  const effectiveGender = targetGender || query.gender;
+
   if (usingSupabase) {
     let sb = supabase.from('profiles').select('*', { count: 'exact' });
 
-    if (query.gender) sb = sb.eq('gender', query.gender);
+    if (effectiveGender) sb = sb.eq('gender', effectiveGender);
     if (query.minAge) sb = sb.gte('age', Number(query.minAge));
     if (query.maxAge) sb = sb.lte('age', Number(query.maxAge));
     if (query.religion && query.religion !== 'Any') sb = sb.eq('religion', query.religion);
@@ -160,7 +172,8 @@ export async function listProfiles(query = {}, viewerId) {
     };
   }
 
-  const filtered = applySort(applyFilters(mem.profiles, query), sort);
+  const effectiveQuery = effectiveGender ? { ...query, gender: effectiveGender } : query;
+  const filtered = applySort(applyFilters(mem.profiles, effectiveQuery), sort);
   const from = (page - 1) * pageSize;
   return {
     items: await annotateViewerFlags(filtered.slice(from, from + pageSize), viewerId),
@@ -180,11 +193,20 @@ export async function getProfile(id, viewerId) {
     profile = mem.profiles.find((p) => p.id === id) || null;
   }
   if (!profile) return null;
+
+  if (viewerId) {
+    const viewer = await getUserById(viewerId);
+    if (viewer && viewer.role !== 'admin' && viewer.gender) {
+      const targetGender = OPPOSITE_GENDER[viewer.gender];
+      if (targetGender && profile.gender !== targetGender) {
+        return null;
+      }
+    }
+  }
+
   const [annotated] = await annotateViewerFlags([profile], viewerId);
   return annotated;
 }
-
-const OPPOSITE_GENDER = { male: 'female', female: 'male' };
 
 function ageFromDob(dob) {
   if (!dob) return null;
@@ -493,9 +515,16 @@ export async function ensureAdminSeeded({ email, passwordHash }) {
   });
 }
 
-// ------------------------------------------------- shortlists / interests ---
-
 async function toggleLink(table, list, userId, profileId) {
+  if (userId) {
+    const profile = await getProfile(profileId, userId);
+    if (!profile) {
+      const err = new Error('Profile not found or incompatible gender.');
+      err.status = 404;
+      throw err;
+    }
+  }
+
   if (usingSupabase) {
     const { data } = await supabase
       .from(table)
@@ -527,29 +556,53 @@ export const expressInterest = (userId, profileId) =>
   toggleLink('interests', mem.interests, userId, profileId);
 
 export async function listShortlist(userId) {
+  let targetGender = null;
+  if (userId) {
+    const viewer = await getUserById(userId);
+    if (viewer && viewer.role !== 'admin' && viewer.gender) {
+      targetGender = OPPOSITE_GENDER[viewer.gender] || null;
+    }
+  }
+
   if (usingSupabase) {
     const { data, error } = await supabase
       .from('shortlists')
       .select('profile_id, profiles(*)')
       .eq('user_id', userId);
     if (error) throw error;
-    return (data ?? []).map((r) => r.profiles).filter(Boolean);
+    const items = (data ?? []).map((r) => r.profiles).filter(Boolean);
+    const filtered = targetGender ? items.filter((p) => p.gender === targetGender) : items;
+    return annotateViewerFlags(filtered, userId);
   }
   const ids = mem.shortlists.filter((s) => s.user_id === userId).map((s) => s.profile_id);
-  return mem.profiles.filter((p) => ids.includes(p.id));
+  const items = mem.profiles.filter((p) => ids.includes(p.id));
+  const filtered = targetGender ? items.filter((p) => p.gender === targetGender) : items;
+  return annotateViewerFlags(filtered, userId);
 }
 
 export async function listInterests(userId) {
+  let targetGender = null;
+  if (userId) {
+    const viewer = await getUserById(userId);
+    if (viewer && viewer.role !== 'admin' && viewer.gender) {
+      targetGender = OPPOSITE_GENDER[viewer.gender] || null;
+    }
+  }
+
   if (usingSupabase) {
     const { data, error } = await supabase
       .from('interests')
       .select('profile_id, profiles(*)')
       .eq('user_id', userId);
     if (error) throw error;
-    return (data ?? []).map((r) => r.profiles).filter(Boolean);
+    const items = (data ?? []).map((r) => r.profiles).filter(Boolean);
+    const filtered = targetGender ? items.filter((p) => p.gender === targetGender) : items;
+    return annotateViewerFlags(filtered, userId);
   }
   const ids = mem.interests.filter((s) => s.user_id === userId).map((s) => s.profile_id);
-  return mem.profiles.filter((p) => ids.includes(p.id));
+  const items = mem.profiles.filter((p) => ids.includes(p.id));
+  const filtered = targetGender ? items.filter((p) => p.gender === targetGender) : items;
+  return annotateViewerFlags(filtered, userId);
 }
 
 // ---------------------------------------------------------------- orders ---

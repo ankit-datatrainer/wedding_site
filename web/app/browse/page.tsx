@@ -1,9 +1,10 @@
+import { cookies } from 'next/headers';
 import { Suspense } from 'react';
 import { BrowseFilters } from '@/components/BrowseFilters';
 import { Pagination } from '@/components/Pagination';
 import { ProfileCard } from '@/components/ProfileCard';
 import { SortSelect } from '@/components/SortSelect';
-import { buildQuery, serverApi } from '@/lib/api';
+import { buildQuery, serverApi, TOKEN_KEY } from '@/lib/api';
 import type { Paged, Profile } from '@/lib/types';
 
 export const metadata = {
@@ -26,9 +27,13 @@ export default async function BrowsePage({
     Object.entries(params).map(([k, v]) => [k, Array.isArray(v) ? v.join(',') : (v ?? '')])
   );
 
+  const cookieStore = await cookies();
+  const token = cookieStore.get(TOKEN_KEY)?.value;
+  const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
+
   const page = Math.max(1, Number(flat.page) || 1);
   const query = buildQuery({ ...flat, page, pageSize: PAGE_SIZE });
-  const result = await serverApi<Paged<Profile>>(`/api/profiles${query}`, false);
+  const result = await serverApi<Paged<Profile>>(`/api/profiles${query}`, false, { headers });
   const totalPages = Math.max(1, Math.ceil(result.total / PAGE_SIZE));
 
   const makeHref = (target: number) => `/browse${buildQuery({ ...flat, page: target })}`;

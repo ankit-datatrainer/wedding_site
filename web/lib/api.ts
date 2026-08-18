@@ -109,8 +109,13 @@ export async function deletePhoto(url: string): Promise<{ photos: string[]; phot
  * Server-component fetch. Content endpoints are revalidated periodically;
  * anything list-like stays dynamic so filters always reflect the API.
  */
-export async function serverApi<T>(path: string, revalidate: number | false = 60): Promise<T> {
+export async function serverApi<T>(
+  path: string,
+  revalidate: number | false = 60,
+  options: { headers?: Record<string, string> } = {}
+): Promise<T> {
   const res = await fetch(`${SERVER_API_URL}${path}`, {
+    headers: options.headers,
     next: revalidate === false ? undefined : { revalidate },
     cache: revalidate === false ? 'no-store' : undefined,
   });

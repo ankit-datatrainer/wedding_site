@@ -12,7 +12,8 @@
     "gen:sql": "node src/generate-sql.js",
     "verify": "node src/verify.js",
     "test:biodata": "node src/biodata.test.js",
-    "test:biodata:api": "node src/biodata.api.test.js"
+    "test:biodata:api": "node src/biodata.api.test.js",
+    "test:gender": "node src/gender-matching.test.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",

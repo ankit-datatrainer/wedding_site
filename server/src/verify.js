@@ -157,7 +157,6 @@ check('results are ranked descending',
 const anonMatches = await req('/api/matches');
 check('unauthenticated /api/matches rejected', anonMatches.status === 401);
 
-// opposite gender viewer
 const regF = await req('/api/auth/register', {
   method: 'POST',
   body: JSON.stringify({
@@ -170,6 +169,24 @@ const matchesF = await req('/api/matches?pageSize=50', { headers: AUTH_F });
 check('female viewer sees only men',
   matchesF.body?.items?.length > 0 && matchesF.body.items.every((p) => p.gender === 'male'),
   `${matchesF.body?.total} candidates`);
+
+// directory opposite-gender enforcement
+const maleBrowse = await req('/api/profiles?pageSize=50', { headers: AUTH });
+check('authenticated male directory browse returns only female profiles',
+  maleBrowse.body?.items?.length > 0 && maleBrowse.body.items.every((p) => p.gender === 'female'));
+
+const femaleBrowse = await req('/api/profiles?pageSize=50', { headers: AUTH_F });
+check('authenticated female directory browse returns only male profiles',
+  femaleBrowse.body?.items?.length > 0 && femaleBrowse.body.items.every((p) => p.gender === 'male'));
+
+const maleProfileId = matchesF.body?.items?.[0]?.id;
+if (maleProfileId) {
+  const maleViewMale = await req(`/api/profiles/${maleProfileId}`, { headers: AUTH });
+  check('male member blocked from viewing male profile detail (404)', maleViewMale.status === 404);
+
+  const maleShortlistMale = await req(`/api/profiles/${maleProfileId}/shortlist`, { method: 'POST', headers: AUTH });
+  check('male member blocked from shortlisting male profile', maleShortlistMale.status === 404 || maleShortlistMale.status === 400);
+}
 
 // ------------------------------------------ shortlist / interest / flags ---
 console.log('\nShortlist & interests');

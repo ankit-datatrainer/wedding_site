@@ -1,9 +1,10 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Icon } from './Icon';
 import { buildQuery } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 
 const AGE_RANGES = ['21 - 28', '25 - 32', '30 - 38', '18 - 25'];
 const RELIGIONS = ['Hindu', 'Muslim', 'Christian', 'Sikh', 'Any'];
@@ -13,7 +14,16 @@ const LOCATIONS = ['Any', 'Mumbai', 'Delhi', 'Bengaluru', 'Pune', 'Chennai', 'Hy
 /** The hero search bar from the home screen, wired to /browse. */
 export function HeroSearch() {
   const router = useRouter();
-  const [lookingFor, setLookingFor] = useState('Bride');
+  const { user } = useAuth();
+  const [lookingFor, setLookingFor] = useState(
+    user?.gender === 'female' ? 'Groom' : 'Bride'
+  );
+
+  useEffect(() => {
+    if (user?.gender === 'male') setLookingFor('Bride');
+    else if (user?.gender === 'female') setLookingFor('Groom');
+  }, [user?.gender]);
+
   const [ageRange, setAgeRange] = useState(AGE_RANGES[0]);
   const [religion, setReligion] = useState('Hindu');
   const [community, setCommunity] = useState('Any');
