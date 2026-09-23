@@ -6,6 +6,7 @@ import { AdminShell } from '@/components/admin/AdminShell';
 import { Badge, Panel, StatCard, Td, TableWrap, Th, EmptyRow } from '@/components/admin/ui';
 import { Icon } from '@/components/Icon';
 import { adminApi } from '@/lib/adminApi';
+import { useAdminAuth, type Permission } from '@/lib/adminAuth';
 import { formatINR } from '@/lib/api';
 
 type Stats = {
@@ -21,6 +22,7 @@ type Stats = {
   paidOrders: number;
   subscribers: number;
   revenue: number;
+  pendingProfiles: number;
 };
 
 type Activity = { kind: string; created_at: string; email: string; profile: string };
@@ -29,6 +31,7 @@ export default function AdminOverviewPage() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [activity, setActivity] = useState<Activity[] | null>(null);
   const [error, setError] = useState('');
+  const { can, session } = useAdminAuth();
 
   useEffect(() => {
     Promise.all([
@@ -43,7 +46,7 @@ export default function AdminOverviewPage() {
   }, []);
 
   return (
-    <AdminShell title="Overview" description="Everything happening on EverAfter right now">
+    <AdminShell title="Overview" description="Everything happening on EverAfter right now" permission="overview.view">
       {error && (
         <p role="alert" className="mb-4 font-body text-label-md text-error">
           {error}
@@ -60,6 +63,26 @@ export default function AdminOverviewPage() {
 
       {stats && (
         <>
+          {stats.pendingProfiles > 0 && can('profiles.approve') && (
+            <Link
+              href="/admin/profiles"
+              className="mb-5 flex items-center gap-4 rounded-2xl bg-primary-container px-5 py-4 text-inverse-on-surface shadow-card transition-transform hover:-translate-y-0.5"
+            >
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/10">
+                <Icon name="pending_actions" className="text-[22px] text-secondary-fixed-dim" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="font-heading text-[18px]">
+                  {stats.pendingProfiles} profile{stats.pendingProfiles === 1 ? '' : 's'} waiting for approval
+                </p>
+                <p className="font-body text-label-md opacity-70">
+                  They are hidden from the website until approved.
+                </p>
+              </div>
+              <span className="font-body text-label-md uppercase text-secondary-fixed-dim">Review now →</span>
+            </Link>
+          )}
+
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <StatCard
               icon="group"
@@ -159,11 +182,15 @@ export default function AdminOverviewPage() {
             <Panel title="Quick Actions">
               <div className="flex flex-col gap-2 p-4">
                 {[
-                  { href: '/admin/members', icon: 'group', label: 'Manage members' },
-                  { href: '/admin/profiles', icon: 'person_add', label: 'Add a directory profile' },
-                  { href: '/admin/payments', icon: 'receipt_long', label: 'Review payments' },
-                  { href: '/admin/newsletter', icon: 'mail', label: 'Newsletter subscribers' },
-                ].map((a) => (
+                  { href: '/admin/upload', icon: 'upload_file', label: 'Upload a biodata & find matches', perm: 'profiles.create' },
+                  { href: '/admin/profiles', icon: 'fact_check', label: 'Approve pending profiles', perm: 'profiles.approve' },
+                  { href: '/admin/export', icon: 'file_export', label: 'Export biodata (Excel / PDF / CSV)', perm: 'export.data' },
+                  { href: '/admin/members', icon: 'group', label: 'Manage members', perm: 'members.view' },
+                  { href: '/admin/payments', icon: 'receipt_long', label: 'Review payments', perm: 'payments.view' },
+                  { href: '/admin/team', icon: 'admin_panel_settings', label: 'Team & roles', perm: null },
+                ]
+                  .filter((a) => (a.perm ? can(a.perm as Permission) : !!session?.isSuper))
+                  .map((a) => (
                   <Link
                     key={a.href}
                     href={a.href}

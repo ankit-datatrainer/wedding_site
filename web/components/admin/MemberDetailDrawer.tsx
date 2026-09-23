@@ -81,6 +81,56 @@ export function MemberDetailDrawer({ member, onClose }: { member: User; onClose:
           ))}
         </dl>
 
+        <div className="mt-6 rounded-xl border border-secondary/30 bg-secondary-fixed/25 p-4">
+          <h3 className="mb-2 flex items-center gap-2 font-body text-label-lg uppercase text-primary">
+            <Icon name="how_to_reg" className="text-[18px] text-secondary" />
+            Reference
+          </h3>
+          {member.details.referenceName ? (
+            <dl className="grid grid-cols-[110px_1fr] gap-y-1.5 font-body text-body-md">
+              <dt className="text-label-md uppercase text-on-surface-variant">Name</dt>
+              <dd className="text-on-surface">{member.details.referenceName}</dd>
+              <dt className="text-label-md uppercase text-on-surface-variant">Phone</dt>
+              <dd className="text-on-surface">
+                {member.details.referencePhone ? (
+                  <a href={`tel:${member.details.referencePhone}`} className="text-secondary hover:underline">
+                    {member.details.referencePhone}
+                  </a>
+                ) : (
+                  '—'
+                )}
+              </dd>
+              <dt className="text-label-md uppercase text-on-surface-variant">Relation</dt>
+              <dd className="text-on-surface">{member.details.referredBy || '—'}</dd>
+            </dl>
+          ) : (
+            <p className="font-body text-body-md text-error">No reference provided (registered before references became required).</p>
+          )}
+        </div>
+
+        {(member.details.fatherEmail || member.details.motherEmail) && (
+          <div className="mt-6">
+            <h3 className="mb-2 font-body text-label-lg uppercase text-primary">Parent Confirmations</h3>
+            <ul className="flex flex-col gap-1.5">
+              {(['Father', 'Mother'] as const).map((rel) => {
+                const email = rel === 'Father' ? member.details.fatherEmail : member.details.motherEmail;
+                if (!email) return null;
+                const sent = (member.details.parentNotifications || []).filter((n) => n.relation === rel).pop();
+                return (
+                  <li key={rel} className="flex items-center justify-between gap-3 rounded-lg bg-surface-container-low px-3 py-2">
+                    <span className="font-body text-body-md text-on-surface">
+                      {rel}: {email}
+                    </span>
+                    <span className="font-body text-label-md text-on-surface-variant">
+                      {sent ? `Confirmation ${sent.status === 'failed' ? 'failed' : 'sent'} ${new Date(sent.sentAt).toLocaleDateString()}` : 'Not notified'}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
+
         {member.details.aboutMe && (
           <div className="mt-6">
             <h3 className="mb-2 font-body text-label-lg uppercase text-primary">About</h3>

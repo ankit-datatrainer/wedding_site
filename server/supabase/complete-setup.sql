@@ -125,6 +125,62 @@ drop policy if exists "public read stories" on success_stories;
 create policy "public read stories" on success_stories for select using (true);
 
 -- ---------------------------------------------------------------------------
+-- Migration 002 (team roles, profile approval, biodata details, email log).
+-- Also shipped standalone in migrations/002_team_roles_approval.sql for
+-- databases created before it existed.
+-- ---------------------------------------------------------------------------
+
+-- 1. Directory profiles: approval workflow + the full biodata blob.
+alter table profiles add column if not exists status       text not null default 'approved';
+alter table profiles add column if not exists details      jsonb not null default '{}'::jsonb;
+alter table profiles add column if not exists source       text;
+alter table profiles add column if not exists created_by   text;
+alter table profiles add column if not exists approved_by  text;
+alter table profiles add column if not exists approved_at  timestamptz;
+alter table profiles add column if not exists review_note  text;
+
+alter table profiles drop constraint if exists profiles_status_check;
+alter table profiles add constraint profiles_status_check
+  check (status in ('pending', 'approved', 'rejected'));
+
+create index if not exists profiles_status_idx on profiles (status);
+
+-- 2. Team roles (staff, manager, developer, content editor, custom...).
+create table if not exists admin_roles (
+  id           text primary key,
+  name         text not null unique,
+  description  text,
+  permissions  jsonb not null default '[]'::jsonb,
+  is_system    boolean not null default false,
+  created_at   timestamptz not null default now()
+);
+
+-- 3. Team accounts live in `users` with role = 'staff' and a role id.
+alter table users add column if not exists admin_role_id text references admin_roles(id) on delete set null;
+alter table users drop constraint if exists users_role_check;
+alter table users add constraint users_role_check check (role in ('member', 'admin', 'staff'));
+
+-- 4. Every parent confirmation email the platform sends (or tries to).
+create table if not exists email_logs (
+  id          text primary key,
+  to_email    text not null,
+  relation    text,
+  child_name  text,
+  user_email  text,
+  subject     text,
+  status      text not null,
+  error       text,
+  sent_at     timestamptz not null default now()
+);
+
+alter table admin_roles enable row level security;
+alter table email_logs  enable row level security;
+
+-- Public read access to profiles must only ever expose approved ones.
+drop policy if exists "public read profiles" on profiles;
+create policy "public read profiles" on profiles for select using (status = 'approved');
+
+-- ---------------------------------------------------------------------------
 -- Directory profiles (8) — the pool the matching algorithm ranks over.
 -- ---------------------------------------------------------------------------
 
@@ -162,9 +218,9 @@ on conflict (id) do update set
 -- ---------------------------------------------------------------------------
 
 insert into success_stories (id, couple, rating, quote, photo) values
-  ('s1', 'Gopal & Kanika', 5, 'We met on EverAfter and instantly clicked over our shared love for classical music and travel. The journey from our first conversation to our wedding day felt incredibly natural and meant to be. We are so grateful for this platform.', 'https://lh3.googleusercontent.com/aida-public/AB6AXuBvMsvTv7Y-CJGR0W6FxcXuL9Rvdc6lfpbrZsw2_YsC2Vzc5Hx09H_tWfQ0Alf5RU_uoM6irr0oBJVVij7lCWnhJiJd15zR1rLaPf9oJ14fgop5o8ye7-yy49NiGp6OFJ5Pg1og8mIxdYjb1nVST37BR4yC1yEzV6YfVT_nn55mgk49rjWju5FM-2iA_I7rF6hXqyLVj1qgGSw9ezOLH-7r0ZtKBF0eMN_Xnc648C32Z-XccKCzKgO9tqJUMxFdHsc7eYxoci1Uzaao'),
-  ('s2', 'Priya & Vikram', 5, 'I was skeptical about online matchmaking until I found EverAfter. The detailed profiles helped me find someone who truly aligned with my values. Meeting Vikram changed my life forever.', 'https://lh3.googleusercontent.com/aida-public/AB6AXuBmdxb9SZF3fJPRNF4Z7w9HLmseiZcvVRpAM2R0FsgzkVxEOs7LcCUig-QEAFAbEo3repteQ_dwY_-xNIpyi7IHX9nX5baB188KzfQZqDM28t1lWeASelnXxFKaNxTo8yMxM71dmuA4K4wl2LNLuWKs3Zt33GN8zYkUq3aqsDJb0JIUUmI6J2YGkskZYbUWCBFNCHbqx5x6ITCwDWmJ_N-1VIZDO14jqfVb2_ZeTeNDJ6B8qWyYgD26lki1UEweO9MPgC7N_tN5OLY3'),
-  ('s3', 'Aditya & Sneha', 5, 'Both our families were involved from the very first conversation, which is exactly what we wanted. Three months later we were engaged, surrounded by everyone we love.', 'https://lh3.googleusercontent.com/aida-public/AB6AXuDnp6Ddkwkj_UrTvVlynbOJ1nOUFJ4HprjUGIAkAtzrGGRpwDogp5k34Q8eADyfTbWS81-lZfjwXQ4Gq6hYn9G7mFyjc54FHo0z_HOZ4o5N273S7IS_ZX9xUZ3zWBtoRgd8-z1baJCE9VVGJXnTmz5ovP2ucGuIQ8_KtzB6QqmkkyevWAxuxP58VFHH2PCZanfa6sFGRIjMFosF3G0agMvrcYfYakdGdL_Lf8exzLt3VRxmgR2JFijhAjATJa3Ar2NW4tk_UAyJRTN-')
+  ('s1', 'Gopal & Kanika', 5, 'We met on EverAfter and instantly clicked over our shared love for classical music and travel. The journey from our first conversation to our wedding day felt incredibly natural and meant to be. We are so grateful for this platform.', '/story_couple1.jpg'),
+  ('s2', 'Priya & Vikram', 5, 'I was skeptical about online matchmaking until I found EverAfter. The detailed profiles helped me find someone who truly aligned with my values. Meeting Vikram changed my life forever.', '/about_couple.jpg'),
+  ('s3', 'Aditya & Sneha', 5, 'Both our families were involved from the very first conversation, which is exactly what we wanted. Three months later we were engaged, surrounded by everyone we love.', '/story_thumb.jpg')
 on conflict (id) do update set
   couple = excluded.couple,
   rating = excluded.rating,

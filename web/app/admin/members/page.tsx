@@ -6,6 +6,7 @@ import { MemberDetailDrawer } from '@/components/admin/MemberDetailDrawer';
 import { Badge, EmptyRow, Pager, Panel, SearchBox, TableWrap, Td, Th } from '@/components/admin/ui';
 import { Icon } from '@/components/Icon';
 import { adminApi, adminDownload } from '@/lib/adminApi';
+import { useAdminAuth } from '@/lib/adminAuth';
 import { mediaUrl } from '@/lib/api';
 import type { Paged, User } from '@/lib/types';
 
@@ -19,6 +20,7 @@ export default function AdminMembersPage() {
   const [error, setError] = useState('');
   const [selected, setSelected] = useState<User | null>(null);
   const [busy, setBusy] = useState(false);
+  const { can } = useAdminAuth();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -74,7 +76,9 @@ export default function AdminMembersPage() {
     <AdminShell
       title="Members"
       description="Everyone who has registered on the site"
+      permission="members.view"
       actions={
+        can('export.data') && (
         <button
           onClick={exportCsv}
           disabled={busy || !result?.total}
@@ -83,6 +87,7 @@ export default function AdminMembersPage() {
           <Icon name="download" className="text-[18px]" />
           Export CSV
         </button>
+        )
       }
     >
       {error && (
@@ -105,7 +110,7 @@ export default function AdminMembersPage() {
         }
       >
         <TableWrap>
-          <table className="w-full min-w-[840px] border-collapse">
+          <table className="w-full min-w-[1000px] border-collapse">
             <thead>
               <tr className="border-b border-outline-variant/30">
                 <Th />
@@ -114,17 +119,18 @@ export default function AdminMembersPage() {
                 <Th>Phone</Th>
                 <Th>Gender</Th>
                 <Th>City</Th>
+                <Th>Reference</Th>
                 <Th>Plan</Th>
                 <Th>Joined</Th>
                 <Th className="text-right">Actions</Th>
               </tr>
             </thead>
             <tbody>
-              {loading && <EmptyRow colSpan={9} message="Loading…" />}
+              {loading && <EmptyRow colSpan={10} message="Loading…" />}
 
               {!loading && result?.items.length === 0 && (
                 <EmptyRow
-                  colSpan={9}
+                  colSpan={10}
                   message={
                     search
                       ? 'No members match that search.'
@@ -159,6 +165,18 @@ export default function AdminMembersPage() {
                     <Td className="capitalize text-on-surface-variant">{m.gender || '—'}</Td>
                     <Td className="text-on-surface-variant">{m.details?.city || '—'}</Td>
                     <Td>
+                      {m.details?.referenceName ? (
+                        <span title={[m.details.referencePhone, m.details.referredBy].filter(Boolean).join(' · ')}>
+                          <span className="block">{m.details.referenceName}</span>
+                          <span className="block font-body text-[12px] text-on-surface-variant">
+                            {[m.details.referredBy, m.details.referencePhone].filter(Boolean).join(' · ')}
+                          </span>
+                        </span>
+                      ) : (
+                        <span className="font-body text-label-md text-error">Missing</span>
+                      )}
+                    </Td>
+                    <Td>
                       {m.plan_id ? (
                         <Badge tone="success">{m.plan_id}</Badge>
                       ) : (
@@ -175,13 +193,15 @@ export default function AdminMembersPage() {
                       >
                         View
                       </button>
-                      <button
-                        onClick={() => remove(m)}
-                        disabled={busy}
-                        className="ml-4 font-body text-label-md uppercase text-error hover:underline disabled:opacity-50"
-                      >
-                        Delete
-                      </button>
+                      {can('members.delete') && (
+                        <button
+                          onClick={() => remove(m)}
+                          disabled={busy}
+                          className="ml-4 font-body text-label-md uppercase text-error hover:underline disabled:opacity-50"
+                        >
+                          Delete
+                        </button>
+                      )}
                     </Td>
                   </tr>
                 ))}

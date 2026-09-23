@@ -7,8 +7,8 @@ import { sendParentNotificationEmail } from '../email.js';
 
 const router = Router();
 
-// Registration schema: all personal and demographic details are optional.
-// Only valid email and password are strictly required to create an account.
+// Registration schema: identity, login, and a reference are required.
+// Everything else in `details` is optional and can be completed later.
 const registerSchema = z.object({
   profileFor: z.enum(['self', 'son', 'daughter', 'brother', 'sister', 'relative']).default('self'),
   firstName: z.string().default('Member'),
@@ -21,7 +21,38 @@ const registerSchema = z.object({
   details: z.record(z.any()).optional().default({}),
   fatherEmail: z.string().optional().nullable(),
   motherEmail: z.string().optional().nullable(),
+  // Whether the member said "yes, send my parent a confirmation". Defaults
+  // to yes when an email is present, matching the wizard's default.
+  notifyFather: z.boolean().optional().default(true),
+  notifyMother: z.boolean().optional().default(true),
 });
+
+const PHONE_DIGITS = /\d/g;
+
+/**
+ * Every registration must carry a reference — a person who can vouch for
+ * the member. Returns an error message, or null when it's complete.
+ */
+function referenceProblem(details) {
+  const name = String(details.referenceName || '').trim();
+  const phone = String(details.referencePhone || '').trim();
+  const relation = String(details.referredBy || '').trim();
+  if (name.length < 2) return "Please enter your reference person's name.";
+  if ((phone.match(PHONE_DIGITS) || []).length < 10) return "Please enter your reference's phone number (at least 10 digits).";
+  if (!relation) return 'Please tell us how you know your reference (e.g. uncle, family friend).';
+  return null;
+}
+
+async function notifyParents({ details, childName, userEmail, notifyFather = true, notifyMother = true }) {
+  const jobs = [];
+  if (details.fatherEmail && notifyFather) {
+    jobs.push(sendParentNotificationEmail({ recipientEmail: details.fatherEmail, relation: 'Father', childName, userEmail }));
+  }
+  if (details.motherEmail && notifyMother) {
+    jobs.push(sendParentNotificationEmail({ recipientEmail: details.motherEmail, relation: 'Mother', childName, userEmail }));
+  }
+  return (await Promise.all(jobs)).filter(Boolean);
+}
 
 router.post('/register', async (req, res, next) => {
   try {
@@ -31,33 +62,18 @@ router.post('/register', async (req, res, next) => {
     }
     const body = parsed.data;
 
-    if (await findUserByEmail(body.email)) {
-      return res.status(409).json({ error: 'An account with this email already exists.' });
-    }
-
     const details = { ...(body.details || {}) };
     if (body.fatherEmail && !details.fatherEmail) details.fatherEmail = body.fatherEmail;
     if (body.motherEmail && !details.motherEmail) details.motherEmail = body.motherEmail;
-
-    const childName = `${body.firstName || ''} ${body.lastName || ''}`.trim() || 'Your Child';
-
-    // Notify parents if contact emails are provided
-    if (details.fatherEmail) {
-      sendParentNotificationEmail({
-        recipientEmail: details.fatherEmail,
-        relation: 'Father',
-        childName,
-        userEmail: body.email,
-      }).catch((e) => console.error('Error dispatching father notification email:', e.message));
+    for (const key of ['referenceName', 'referencePhone', 'referredBy']) {
+      if (typeof details[key] === 'string') details[key] = details[key].trim();
     }
 
-    if (details.motherEmail) {
-      sendParentNotificationEmail({
-        recipientEmail: details.motherEmail,
-        relation: 'Mother',
-        childName,
-        userEmail: body.email,
-      }).catch((e) => console.error('Error dispatching mother notification email:', e.message));
+    const referenceError = referenceProblem(details);
+    if (referenceError) return res.status(400).json({ error: referenceError });
+
+    if (await findUserByEmail(body.email)) {
+      return res.status(409).json({ error: 'An account with this email already exists.' });
     }
 
     const user = await createUser({
@@ -76,7 +92,32 @@ router.post('/register', async (req, res, next) => {
       details,
     });
 
-    res.status(201).json({ token: signToken(user), user: publicUser(user) });
+    // Parent confirmations go out after the account exists, so a slow or
+    // failing mail server can never cost someone their registration.
+    const childName = `${body.firstName || ''} ${body.lastName || ''}`.trim() || 'Your Child';
+    const notifications = await notifyParents({
+      details,
+      childName,
+      userEmail: body.email,
+      notifyFather: body.notifyFather,
+      notifyMother: body.notifyMother,
+    });
+
+    let saved = user;
+    if (notifications.length) {
+      saved = (await updateUserProfile(user.id, { details: { parentNotifications: notifications } })) || user;
+    }
+
+    res.status(201).json({
+      token: signToken(saved),
+      user: publicUser(saved),
+      notifications,
+      reference: {
+        name: details.referenceName,
+        phone: details.referencePhone,
+        relation: details.referredBy,
+      },
+    });
   } catch (err) {
     next(err);
   }
@@ -97,6 +138,9 @@ router.post('/login', async (req, res, next) => {
     const user = await findUserByEmail(parsed.data.email);
     const ok = user && (await bcrypt.compare(parsed.data.password, user.password_hash));
     if (!ok) return res.status(401).json({ error: 'Incorrect email or password.' });
+    if (user.role === 'staff') {
+      return res.status(403).json({ error: 'Team accounts sign in through the admin panel at /admin/login.' });
+    }
 
     res.json({ token: signToken(user), user: publicUser(user) });
   } catch (err) {
@@ -201,28 +245,26 @@ router.patch('/me', requireAuth, async (req, res, next) => {
     const existingDetails = currentUser?.details || {};
     const newDetails = parsed.data.details || {};
 
-    // Check if new parent emails were added and send confirmation
+    // A newly added (or changed) parent email gets its own confirmation.
     const childName = `${currentUser.first_name || ''} ${currentUser.last_name || ''}`.trim() || 'Your Child';
-    if (newDetails.fatherEmail && newDetails.fatherEmail !== existingDetails.fatherEmail) {
-      sendParentNotificationEmail({
-        recipientEmail: newDetails.fatherEmail,
-        relation: 'Father',
-        childName,
-        userEmail: currentUser.email,
-      }).catch((e) => console.error('Error dispatching father notification email:', e.message));
-    }
-    if (newDetails.motherEmail && newDetails.motherEmail !== existingDetails.motherEmail) {
-      sendParentNotificationEmail({
-        recipientEmail: newDetails.motherEmail,
-        relation: 'Mother',
-        childName,
-        userEmail: currentUser.email,
-      }).catch((e) => console.error('Error dispatching mother notification email:', e.message));
+    const notifications = await notifyParents({
+      details: {
+        fatherEmail: newDetails.fatherEmail !== existingDetails.fatherEmail ? newDetails.fatherEmail : undefined,
+        motherEmail: newDetails.motherEmail !== existingDetails.motherEmail ? newDetails.motherEmail : undefined,
+      },
+      childName,
+      userEmail: currentUser.email,
+    });
+    if (notifications.length) {
+      parsed.data.details = {
+        ...newDetails,
+        parentNotifications: [...(existingDetails.parentNotifications || []), ...notifications],
+      };
     }
 
     const updated = await updateUserProfile(req.user.sub, parsed.data);
     if (!updated) return res.status(404).json({ error: 'Account not found.' });
-    res.json({ user: publicUser(updated) });
+    res.json({ user: publicUser(updated), notifications });
   } catch (err) {
     next(err);
   }

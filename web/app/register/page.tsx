@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Icon } from '@/components/Icon';
 import { parseBiodata, uploadPhoto, type BiodataDraft } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import type { MemberDetails } from '@/lib/types';
+import type { MemberDetails, RegisterResult } from '@/lib/types';
 
 // ---------------------------------------------------------------- shared ---
 
@@ -204,6 +204,9 @@ type FormState = {
   email: string;
   password: string;
   details: MemberDetails;
+  /** 'yes' | 'no' — the member's answer to "send your father a confirmation?" */
+  notifyFather: string;
+  notifyMother: string;
 };
 
 const BLANK: FormState = {
@@ -216,7 +219,67 @@ const BLANK: FormState = {
   email: '',
   password: '',
   details: {},
+  notifyFather: 'yes',
+  notifyMother: 'yes',
 };
+
+const isEmail = (v?: string) => !!v && /^\S+@\S+\.\S+$/.test(v.trim());
+
+/**
+ * Shown under a parent's email once it looks valid: asks whether to send
+ * that parent a confirmation, and says plainly what will happen either way.
+ */
+function ParentConfirm({
+  relation,
+  email,
+  value,
+  onChange,
+}: {
+  relation: 'father' | 'mother';
+  email?: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  if (!isEmail(email)) return null;
+  const yes = value !== 'no';
+  return (
+    <div
+      className={`rounded-xl border px-4 py-3 transition-colors sm:col-span-2 ${
+        yes ? 'border-secondary/40 bg-secondary-fixed/40' : 'border-outline-variant bg-surface-container-low'
+      }`}
+    >
+      <p className="flex items-start gap-2 font-body text-body-md text-on-surface">
+        <Icon name="forward_to_inbox" className="mt-0.5 text-[19px] text-secondary" />
+        <span>
+          Send a confirmation email to your {relation} at <strong>{email!.trim()}</strong>?
+        </span>
+      </p>
+      <div className="mt-2.5 flex flex-wrap items-center gap-2 pl-7">
+        {(['yes', 'no'] as const).map((v) => (
+          <button
+            key={v}
+            type="button"
+            onClick={() => onChange(v)}
+            aria-pressed={(v === 'yes') === yes}
+            className={`rounded-full border-[1.5px] px-4 py-1.5 font-body text-label-md uppercase tracking-wide transition-colors ${
+              (v === 'yes') === yes
+                ? 'border-secondary bg-secondary text-on-secondary'
+                : 'border-outline-variant text-on-surface-variant hover:border-secondary'
+            }`}
+          >
+            {v === 'yes' ? 'Yes, send it' : 'No, thanks'}
+          </button>
+        ))}
+      </div>
+      <p className="mt-2 flex items-center gap-1.5 pl-7 font-body text-label-md text-on-surface-variant">
+        <Icon name={yes ? 'check_circle' : 'info'} className={`text-[15px] ${yes ? 'text-secondary' : ''}`} filled={yes} />
+        {yes
+          ? `Confirmed — we'll email your ${relation} as soon as your profile is created.`
+          : `No email will be sent to your ${relation}.`}
+      </p>
+    </div>
+  );
+}
 
 type Photo = { file: File; url: string };
 
@@ -544,7 +607,7 @@ const STEPS: Step[] = [
     subtitle: 'A marriage joins two families — help us represent yours.',
     icon: 'diversity_3',
     optional: true,
-    render: ({ form, setDetail }) => (
+    render: ({ form, set, setDetail }) => (
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
         <Select label="Family Type" options={['Nuclear', 'Joint']} value={form.details.familyType ?? ''} onChange={(e) => setDetail('familyType', e.target.value)} />
         <Select label="Family Status" options={['Middle Class', 'Upper Middle Class', 'Rich', 'Affluent']} value={form.details.familyStatus ?? ''} onChange={(e) => setDetail('familyStatus', e.target.value)} />
@@ -553,51 +616,74 @@ const STEPS: Step[] = [
         
         {/* Father's Details */}
         <Field label="Father's Name (optional)" placeholder="e.g. Rajesh Sharma" value={form.details.fatherName ?? ''} onChange={(e) => setDetail('fatherName', e.target.value)} />
-        <Field label="Father's Email (optional)" type="email" placeholder="father@example.com" hint="We will send a confirmation notification to keep your family informed." value={form.details.fatherEmail ?? ''} onChange={(e) => setDetail('fatherEmail', e.target.value)} />
+        <Field label="Father's Email (optional)" type="email" placeholder="father@example.com" hint="We can send your father a confirmation to keep your family informed." value={form.details.fatherEmail ?? ''} onChange={(e) => setDetail('fatherEmail', e.target.value)} />
+        <ParentConfirm relation="father" email={form.details.fatherEmail} value={form.notifyFather} onChange={(v) => set('notifyFather', v)} />
         <div className="sm:col-span-2">
           <Field label="Father's Occupation (optional)" placeholder="e.g. Senior Executive, Businessman" value={form.details.fatherOccupation ?? ''} onChange={(e) => setDetail('fatherOccupation', e.target.value)} />
         </div>
 
         {/* Mother's Details */}
         <Field label="Mother's Name (optional)" placeholder="e.g. Sunita Sharma" value={form.details.motherName ?? ''} onChange={(e) => setDetail('motherName', e.target.value)} />
-        <Field label="Mother's Email (optional)" type="email" placeholder="mother@example.com" hint="We will send a confirmation notification to keep your family informed." value={form.details.motherEmail ?? ''} onChange={(e) => setDetail('motherEmail', e.target.value)} />
+        <Field label="Mother's Email (optional)" type="email" placeholder="mother@example.com" hint="We can send your mother a confirmation to keep your family informed." value={form.details.motherEmail ?? ''} onChange={(e) => setDetail('motherEmail', e.target.value)} />
+        <ParentConfirm relation="mother" email={form.details.motherEmail} value={form.notifyMother} onChange={(v) => set('notifyMother', v)} />
         <div className="sm:col-span-2">
           <Field label="Mother's Occupation (optional)" placeholder="e.g. Homemaker, Professor" value={form.details.motherOccupation ?? ''} onChange={(e) => setDetail('motherOccupation', e.target.value)} />
         </div>
       </div>
     ),
+    validate: (f) => {
+      if (f.details.fatherEmail?.trim() && !isEmail(f.details.fatherEmail)) return "Please check your father's email address.";
+      if (f.details.motherEmail?.trim() && !isEmail(f.details.motherEmail)) return "Please check your mother's email address.";
+      return null;
+    },
   },
   {
-    title: 'Reference from biodata',
-    subtitle: 'Optional reference details from your biodata or matrimonial referee.',
-    icon: 'badge',
-    optional: true,
+    title: 'Your reference',
+    subtitle: 'Required — someone who knows you or your family and can vouch for this profile.',
+    icon: 'how_to_reg',
     render: ({ form, setDetail }) => (
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
         <Field
-          label="Reference Person's Name (optional)"
+          label="Reference Person's Name *"
           placeholder="e.g. Ramesh Chandra, Mr. S.K. Gupta"
+          required
           value={form.details.referenceName ?? ''}
           onChange={(e) => setDetail('referenceName', e.target.value)}
         />
         <Field
-          label="Reference Phone Number (optional)"
+          label="Reference Phone Number *"
           type="tel"
           placeholder="e.g. +91 98765 43210"
+          required
           value={form.details.referencePhone ?? ''}
           onChange={(e) => setDetail('referencePhone', e.target.value)}
         />
         <div className="sm:col-span-2">
           <Field
-            label="Who referred you / Relation (optional)"
+            label="How do you know them? *"
             placeholder="e.g. Family Friend, Uncle, Community Elder, Colleague"
-            hint="Describe who referred you or how you are connected to the reference person."
+            hint="Our team may call your reference to verify the profile before it's highlighted as trusted."
+            required
+            list="reference-relations"
             value={form.details.referredBy ?? ''}
             onChange={(e) => setDetail('referredBy', e.target.value)}
           />
+          <datalist id="reference-relations">
+            {['Family Friend', 'Uncle', 'Aunt', 'Cousin', 'Community Elder', 'Colleague', 'Neighbour', 'Family Priest', 'Marriage Bureau'].map((r) => (
+              <option key={r} value={r} />
+            ))}
+          </datalist>
         </div>
       </div>
     ),
+    validate: (f) => {
+      if ((f.details.referenceName ?? '').trim().length < 2) return "Please enter your reference person's name.";
+      if (((f.details.referencePhone ?? '').match(/\d/g) || []).length < 10) {
+        return "Please enter your reference's phone number (at least 10 digits).";
+      }
+      if (!(f.details.referredBy ?? '').trim()) return 'Please tell us how you know your reference.';
+      return null;
+    },
   },
   {
     title: 'Tell us about yourself',
@@ -684,7 +770,7 @@ const PAGES = [
   },
   {
     title: 'Background, photos & login',
-    subtitle: 'Where you live, what you do, your family — and the login you’ll use.',
+    subtitle: 'Where you live, what you do, your family, your reference — and the login you’ll use.',
     sections: STEPS.slice(6),
   },
 ];
@@ -703,9 +789,13 @@ export default function RegisterPage() {
   const [pending, setPending] = useState(false);
   const [uploadNote, setUploadNote] = useState('');
   const [biodata, setBiodata] = useState<BiodataSummary | null>(null);
+  const [done, setDone] = useState<(RegisterResult & { photos: number }) | null>(null);
+  // Set while this page is creating the account, so the "already signed in"
+  // redirect below doesn't whisk the member away before the confirmation.
+  const registering = useRef(false);
 
   useEffect(() => {
-    if (ready && user) router.replace('/matches');
+    if (ready && user && !registering.current) router.replace('/matches');
   }, [ready, user, router]);
 
   const set = (k: keyof FormState, v: string) => setForm((f) => ({ ...f, [k]: v }));
@@ -779,8 +869,9 @@ export default function RegisterPage() {
 
     setError('');
     setPending(true);
+    registering.current = true;
     try {
-      await signUp({
+      const result = await signUp({
         profileFor: form.profileFor,
         firstName: form.firstName,
         lastName: form.lastName,
@@ -791,6 +882,8 @@ export default function RegisterPage() {
         password: form.password,
         fatherEmail: form.details.fatherEmail,
         motherEmail: form.details.motherEmail,
+        notifyFather: form.notifyFather !== 'no',
+        notifyMother: form.notifyMother !== 'no',
         details: form.details,
       });
 
@@ -803,9 +896,9 @@ export default function RegisterPage() {
         /* details can be completed later from /dashboard */
       }
 
+      let uploaded = 0;
       if (photos.length) {
         setUploadNote(`Uploading photo 1 of ${photos.length}…`);
-        let uploaded = 0;
         for (const photo of photos) {
           try {
             await uploadPhoto(photo.file);
@@ -817,8 +910,11 @@ export default function RegisterPage() {
         }
       }
 
-      router.push('/dashboard');
+      setUploadNote('');
+      setDone({ ...result, photos: uploaded });
+      if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (err) {
+      registering.current = false;
       setError((err as Error).message);
       setPending(false);
       setUploadNote('');
@@ -826,6 +922,10 @@ export default function RegisterPage() {
   }
 
   const progress = ((step + 1) / total) * 100;
+
+  if (done) {
+    return <RegistrationComplete result={done} name={form.firstName} onContinue={() => router.push('/dashboard')} />;
+  }
 
   return (
     <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-gradient-to-br from-primary-fixed to-surface px-margin-mobile py-10 sm:py-14">
@@ -975,6 +1075,105 @@ export default function RegisterPage() {
             Log in
           </Link>
         </p>
+      </div>
+    </main>
+  );
+}
+
+/**
+ * What the member sees once the account exists: confirmation of the profile,
+ * the reference we recorded, and — the point of it — whether each parent's
+ * confirmation email actually went out.
+ */
+function RegistrationComplete({
+  result,
+  name,
+  onContinue,
+}: {
+  result: RegisterResult & { photos: number };
+  name: string;
+  onContinue: () => void;
+}) {
+  const statusText: Record<string, string> = {
+    sent: 'Confirmation email sent',
+    logged: 'Confirmation email queued',
+    failed: 'We could not deliver the confirmation',
+  };
+  return (
+    <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-gradient-to-br from-primary-fixed to-surface px-margin-mobile py-10 sm:py-14">
+      <div className="relative z-10 w-full max-w-xl overflow-hidden rounded-2xl bg-surface-container-lowest shadow-xl">
+        <div className="flex flex-col items-center bg-primary-container px-8 py-10 text-center">
+          <span className="flex h-16 w-16 items-center justify-center rounded-full bg-secondary shadow-lg">
+            <Icon name="check" className="text-[34px] text-on-secondary" />
+          </span>
+          <h1 className="mt-5 font-heading text-[28px] leading-tight text-inverse-on-surface">
+            Welcome to EverAfter{name ? `, ${name}` : ''}!
+          </h1>
+          <p className="mt-2 font-body text-body-md text-inverse-on-surface/70">Your profile has been created.</p>
+        </div>
+
+        <div className="flex flex-col gap-5 px-6 py-8 sm:px-10">
+          <section>
+            <h2 className="mb-3 flex items-center gap-2 font-body text-label-lg uppercase text-primary">
+              <Icon name="how_to_reg" className="text-[19px] text-secondary" />
+              Your reference
+            </h2>
+            <dl className="grid grid-cols-[120px_1fr] gap-y-2 rounded-xl bg-surface-container-low px-4 py-3 font-body text-body-md">
+              <dt className="text-label-md uppercase text-on-surface-variant">Name</dt>
+              <dd className="text-on-surface">{result.reference?.name || '—'}</dd>
+              <dt className="text-label-md uppercase text-on-surface-variant">Phone</dt>
+              <dd className="text-on-surface">{result.reference?.phone || '—'}</dd>
+              <dt className="text-label-md uppercase text-on-surface-variant">Relation</dt>
+              <dd className="text-on-surface">{result.reference?.relation || '—'}</dd>
+            </dl>
+          </section>
+
+          <section>
+            <h2 className="mb-3 flex items-center gap-2 font-body text-label-lg uppercase text-primary">
+              <Icon name="forward_to_inbox" className="text-[19px] text-secondary" />
+              Family confirmation
+            </h2>
+            {result.notifications.length ? (
+              <ul className="flex flex-col gap-2">
+                {result.notifications.map((n) => (
+                  <li
+                    key={n.relation}
+                    className="flex items-center gap-3 rounded-xl border border-secondary/30 bg-secondary-fixed/40 px-4 py-3"
+                  >
+                    <Icon name={n.status === 'failed' ? 'error' : 'mark_email_read'} className="text-[22px] text-secondary" />
+                    <div className="min-w-0">
+                      <p className="font-body text-body-md font-semibold text-on-surface">
+                        {statusText[n.status] || 'Confirmation email sent'} to your {n.relation.toLowerCase()}
+                      </p>
+                      <p className="truncate font-body text-label-md text-on-surface-variant">{n.email}</p>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="rounded-xl bg-surface-container-low px-4 py-3 font-body text-body-md text-on-surface-variant">
+                No parent confirmation was requested. You can add your father&apos;s or mother&apos;s email later from
+                your profile.
+              </p>
+            )}
+          </section>
+
+          {result.photos > 0 && (
+            <p className="flex items-center gap-2 font-body text-label-md text-on-surface-variant">
+              <Icon name="photo_library" className="text-[17px] text-secondary" />
+              {result.photos} photo{result.photos === 1 ? '' : 's'} uploaded
+            </p>
+          )}
+
+          <button
+            type="button"
+            onClick={onContinue}
+            className="group mt-2 flex items-center justify-center gap-2 rounded-lg bg-secondary px-8 py-3.5 font-body text-label-lg uppercase text-on-secondary shadow-md transition-colors hover:bg-on-secondary-container"
+          >
+            Continue to my dashboard
+            <Icon name="arrow_forward" className="text-[18px] transition-transform group-hover:translate-x-1" />
+          </button>
+        </div>
       </div>
     </main>
   );

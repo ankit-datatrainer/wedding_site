@@ -162,6 +162,7 @@ async function main() {
           dob: draft.dob,
           email,
           password: 'BiodataTest123!',
+          details: { referenceName: 'Test Reference', referencePhone: '9876543210', referredBy: 'Family friend' },
         }),
       })
     );

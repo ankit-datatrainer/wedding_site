@@ -2,13 +2,13 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { api, TOKEN_KEY } from './api';
-import type { MemberDetails, User } from './types';
+import type { MemberDetails, RegisterResult, User } from './types';
 
 type AuthState = {
   user: User | null;
   ready: boolean;
   signIn: (email: string, password: string) => Promise<void>;
-  signUp: (payload: Record<string, any>) => Promise<void>;
+  signUp: (payload: Record<string, any>) => Promise<RegisterResult>;
   signOut: () => void;
   refresh: () => Promise<void>;
   updateProfile: (patch: { phone?: string; details?: Partial<MemberDetails> }) => Promise<User>;
@@ -57,13 +57,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     );
   }, []);
 
-  const signUp = useCallback(async (payload: Record<string, string>) => {
-    store(
-      await api<{ token: string; user: User }>('/api/auth/register', {
-        method: 'POST',
-        body: JSON.stringify(payload),
-      })
-    );
+  const signUp = useCallback(async (payload: Record<string, unknown>) => {
+    const res = await api<RegisterResult & { token: string; user: User }>('/api/auth/register', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    store(res);
+    return { notifications: res.notifications ?? [], reference: res.reference };
   }, []);
 
   const signOut = useCallback(() => {

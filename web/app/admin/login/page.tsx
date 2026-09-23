@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { Icon } from '@/components/Icon';
-import { useAdminAuth } from '@/lib/adminAuth';
+import { homePathFor, useAdminAuth } from '@/lib/adminAuth';
 
 const HIGHLIGHTS = [
   { icon: 'group', label: 'Member management', body: 'Search, review and moderate every registered account.' },
@@ -12,7 +12,7 @@ const HIGHLIGHTS = [
 ];
 
 export default function AdminLoginPage() {
-  const { admin, ready, signIn } = useAdminAuth();
+  const { admin, session, ready, can, signIn } = useAdminAuth();
   const router = useRouter();
 
   const [email, setEmail] = useState('');
@@ -22,8 +22,8 @@ export default function AdminLoginPage() {
   const [pending, setPending] = useState(false);
 
   useEffect(() => {
-    if (ready && admin) router.replace('/admin/dashboard');
-  }, [ready, admin, router]);
+    if (ready && admin) router.replace(homePathFor(session, can));
+  }, [ready, admin, session, can, router]);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -31,7 +31,6 @@ export default function AdminLoginPage() {
     setPending(true);
     try {
       await signIn(email, password);
-      router.push('/admin/dashboard');
     } catch (err) {
       setError((err as Error).message);
       setPending(false);
@@ -71,8 +70,9 @@ export default function AdminLoginPage() {
         <div className="hidden flex-col justify-between bg-white/[0.03] p-10 backdrop-blur-sm lg:flex">
           <div>
             <div className="flex items-center gap-2.5">
-              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-secondary shadow-[0_0_0_4px_rgba(232,82,131,0.15)]">
-                <Icon name="favorite" className="text-[18px] text-on-secondary" filled />
+              <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-white p-1.5 shadow-[0_0_0_4px_rgba(232,82,131,0.15)]">
+                {/* eslint-disable-next-line @next/next/no-img-element -- static brand mark */}
+                <img src="/logo-mark.png" alt="" className="h-full w-full object-contain" />
               </span>
               <span className="font-heading text-[22px] text-inverse-on-surface">EverAfter</span>
             </div>
@@ -106,8 +106,9 @@ export default function AdminLoginPage() {
         {/* Sign-in form */}
         <div className="flex flex-col justify-center bg-white/[0.04] p-8 backdrop-blur-xl sm:p-12">
           <div className="mb-2 flex items-center gap-2.5 lg:hidden">
-            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-secondary">
-              <Icon name="favorite" className="text-[16px] text-on-secondary" filled />
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white p-1.5">
+              {/* eslint-disable-next-line @next/next/no-img-element -- static brand mark */}
+              <img src="/logo-mark.png" alt="" className="h-full w-full object-contain" />
             </span>
             <span className="font-heading text-[19px] text-inverse-on-surface">EverAfter</span>
           </div>
@@ -117,9 +118,9 @@ export default function AdminLoginPage() {
             Staff Only
           </span>
 
-          <h2 className="font-heading text-[28px] text-inverse-on-surface">Super Admin</h2>
+          <h2 className="font-heading text-[28px] text-inverse-on-surface">Admin &amp; Team Sign In</h2>
           <p className="mt-1.5 font-body text-body-md text-inverse-on-surface/55">
-            Sign in to manage EverAfter.
+            Super admin and team accounts (staff, managers, editors) sign in here.
           </p>
 
           <form className="mt-8 flex flex-col gap-5" onSubmit={submit}>

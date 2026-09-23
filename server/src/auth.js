@@ -1,5 +1,7 @@
 import jwt from 'jsonwebtoken';
 import { config } from './config.js';
+import { getRole, getUserById } from './store.js';
+import { PERMISSION_KEYS } from './permissions.js';
 
 export function signToken(user) {
   return jwt.sign(
@@ -48,6 +50,54 @@ export function requireAdmin(req, res, next) {
   next();
 }
 
+export const isPanelRole = (role) => role === 'admin' || role === 'staff';
+
+/**
+ * Admin-panel guard. Run requireAuth first. Re-reads the account on every
+ * request (rather than trusting the token) so a suspended account or a
+ * changed role takes effect immediately, not when the 7-day token expires.
+ * Populates req.panel = { user, isSuper, permissions: Set, role }.
+ */
+export async function requirePanel(req, res, next) {
+  try {
+    if (!isPanelRole(req.user?.role)) {
+      return res.status(403).json({ error: 'Admin access required.' });
+    }
+    const user = await getUserById(req.user.sub);
+    if (!user || !isPanelRole(user.role)) {
+      return res.status(403).json({ error: 'Admin access required.' });
+    }
+    if (user.details?.suspended) {
+      return res.status(403).json({ error: 'This team account has been suspended. Contact the super admin.' });
+    }
+    const isSuper = user.role === 'admin';
+    const role = isSuper ? null : await getRole(user.admin_role_id);
+    const permissions = new Set(isSuper ? PERMISSION_KEYS : role?.permissions || []);
+    req.panel = { user, isSuper, permissions, role };
+    next();
+  } catch (err) {
+    next(err);
+  }
+}
+
+/** Allows the request only if the panel user holds every listed permission. */
+export const can = (...perms) => (req, res, next) => {
+  if (perms.every((p) => req.panel?.permissions.has(p))) return next();
+  res.status(403).json({ error: "Your role doesn't have permission to do that. Ask the super admin for access." });
+};
+
+/** Allows the request if the panel user holds any of the listed permissions. */
+export const canAny = (...perms) => (req, res, next) => {
+  if (perms.some((p) => req.panel?.permissions.has(p))) return next();
+  res.status(403).json({ error: "Your role doesn't have permission to do that. Ask the super admin for access." });
+};
+
+/** Super admin only — managing roles and the team is never delegable. */
+export function superOnly(req, res, next) {
+  if (req.panel?.isSuper) return next();
+  res.status(403).json({ error: 'Only the super admin can manage roles and team accounts.' });
+}
+
 export const publicUser = (u) => ({
   id: u.id,
   email: u.email,
@@ -58,6 +108,7 @@ export const publicUser = (u) => ({
   profile_for: u.profile_for,
   plan_id: u.plan_id ?? null,
   role: u.role || 'member',
+  admin_role_id: u.admin_role_id ?? null,
   phone: u.phone ?? null,
   photo_url: u.photo_url ?? null,
   photos: u.photos ?? [],

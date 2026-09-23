@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import { Icon } from '@/components/Icon';
+import { ReferenceCard } from '@/components/ReferenceCard';
 import { api, mediaUrl } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import type { PartnerPreferences, Paged, Profile } from '@/lib/types';
@@ -546,6 +547,8 @@ export default function DashboardPage() {
                 </Link>
               </div>
             </section>
+
+            <ReferenceCard />
 
             {/* Family & Confirmation Notification Card */}
             <section className="rounded-2xl border border-outline-variant/40 bg-surface-container-lowest p-6 shadow-card">

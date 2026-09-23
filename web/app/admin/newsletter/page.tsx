@@ -49,6 +49,7 @@ export default function AdminNewsletterPage() {
     <AdminShell
       title="Newsletter"
       description="People who subscribed from the site footer"
+      permission="newsletter.manage"
       actions={
         <button
           onClick={copyAll}

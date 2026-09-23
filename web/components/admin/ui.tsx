@@ -179,3 +179,110 @@ export function SearchBox({
     </label>
   );
 }
+
+export const btnPrimary =
+  'inline-flex items-center justify-center gap-2 rounded-lg bg-secondary px-4 py-2.5 font-body text-label-md uppercase text-on-secondary shadow-sm transition-colors hover:bg-on-secondary-container disabled:cursor-not-allowed disabled:opacity-50';
+export const btnOutline =
+  'inline-flex items-center justify-center gap-2 rounded-lg border-[1.5px] border-outline-variant bg-surface px-4 py-2.5 font-body text-label-md uppercase text-on-surface-variant transition-colors hover:border-secondary hover:text-secondary disabled:cursor-not-allowed disabled:opacity-50';
+export const inputBase =
+  'w-full rounded-lg border border-outline-variant bg-surface-container-low px-3 py-2.5 font-body text-body-md text-on-surface focus:border-secondary focus:outline-none focus:ring-1 focus:ring-secondary';
+
+const STATUS_STYLE: Record<string, { label: string; cls: string; icon: string }> = {
+  approved: { label: 'Live', cls: 'bg-[#e3f4ea] text-[#1b6b3a]', icon: 'check_circle' },
+  pending: { label: 'Pending', cls: 'bg-tertiary-fixed text-on-tertiary-fixed-variant', icon: 'schedule' },
+  rejected: { label: 'Rejected', cls: 'bg-error-container text-on-error-container', icon: 'block' },
+};
+
+/** Approval state of a directory profile. Legacy rows with no status are live. */
+export function StatusBadge({ status }: { status?: string | null }) {
+  const s = STATUS_STYLE[status || 'approved'] ?? STATUS_STYLE.approved;
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 font-body text-label-md uppercase tracking-wide ${s.cls}`}>
+      <Icon name={s.icon} className="text-[14px]" filled />
+      {s.label}
+    </span>
+  );
+}
+
+export function Tabs<T extends string>({
+  value,
+  onChange,
+  tabs,
+}: {
+  value: T;
+  onChange: (v: T) => void;
+  tabs: { value: T; label: string; count?: number }[];
+}) {
+  return (
+    <div role="tablist" className="flex flex-wrap gap-1 rounded-xl bg-surface-container p-1">
+      {tabs.map((t) => (
+        <button
+          key={t.value}
+          role="tab"
+          aria-selected={value === t.value}
+          onClick={() => onChange(t.value)}
+          className={`flex items-center gap-2 rounded-lg px-3.5 py-2 font-body text-label-md uppercase tracking-wide transition-colors ${
+            value === t.value ? 'bg-surface text-secondary shadow-sm' : 'text-on-surface-variant hover:text-on-surface'
+          }`}
+        >
+          {t.label}
+          {t.count !== undefined && (
+            <span className={`rounded-full px-1.5 py-0.5 text-[11px] ${value === t.value ? 'bg-secondary text-on-secondary' : 'bg-surface-container-high'}`}>
+              {t.count}
+            </span>
+          )}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** Centered dialog with a header, scrollable body and optional footer. */
+export function Modal({
+  title,
+  subtitle,
+  onClose,
+  footer,
+  wide,
+  children,
+}: {
+  title: string;
+  subtitle?: string;
+  onClose: () => void;
+  footer?: React.ReactNode;
+  wide?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-on-surface/50 p-4 backdrop-blur-sm" onClick={onClose}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        onClick={(e) => e.stopPropagation()}
+        className={`flex max-h-[92vh] w-full flex-col overflow-hidden rounded-2xl bg-surface shadow-float ${wide ? 'max-w-4xl' : 'max-w-2xl'}`}
+      >
+        <header className="flex items-start justify-between gap-4 border-b border-outline-variant/30 px-6 py-4">
+          <div className="min-w-0">
+            <h2 className="font-heading text-[19px] text-primary">{title}</h2>
+            {subtitle && <p className="font-body text-label-md text-on-surface-variant">{subtitle}</p>}
+          </div>
+          <button onClick={onClose} aria-label="Close" className="text-on-surface-variant transition-colors hover:text-secondary">
+            <Icon name="close" />
+          </button>
+        </header>
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">{children}</div>
+        {footer && <footer className="flex flex-wrap items-center justify-end gap-3 border-t border-outline-variant/30 px-6 py-4">{footer}</footer>}
+      </div>
+    </div>
+  );
+}
+
+export function ErrorNote({ message }: { message: string }) {
+  if (!message) return null;
+  return (
+    <p role="alert" className="mb-4 flex items-center gap-2 rounded-lg bg-error-container/50 px-3 py-2.5 font-body text-label-md text-on-error-container">
+      <Icon name="error" className="text-[16px]" />
+      {message}
+    </p>
+  );
+}

@@ -20,16 +20,19 @@ export function getToken(key: string = TOKEN_KEY): string | null {
 }
 
 /**
- * Resolves an API-relative path (e.g. `/uploads/u1/photo.jpg`) to an absolute
- * URL against the API origin. Uploaded photos are served by the API, which
- * runs on a different origin/port than the web app in dev — a bare relative
- * path would otherwise be requested from the Next.js server and 404.
- * Already-absolute URLs (the seeded googleusercontent photos) pass through.
+ * Resolves a stored photo reference to something an <img> can load.
+ *
+ * Member/admin uploads (`/uploads/...`) are served by the API, which runs on
+ * a different origin/port than the web app in dev, so they get the API
+ * origin. Other root-relative paths (`/profiles/boy_rohan.jpg`) are static
+ * files in web/public and must stay on the web origin. Absolute URLs pass
+ * through untouched.
  */
 export function mediaUrl(path: string | null | undefined): string {
   if (!path) return '';
   if (/^https?:\/\//.test(path)) return path;
-  return `${API_URL}${path}`;
+  if (path.startsWith('/uploads/')) return `${API_URL}${path}`;
+  return path;
 }
 
 type Options = RequestInit & { auth?: boolean; tokenKey?: string };
@@ -151,4 +154,22 @@ export function formatINR(paise: number): string {
   const rest = rupees.slice(0, -3);
   const grouped = rest ? `${rest.replace(/\B(?=(\d{2})+(?!\d))/g, ',')},${last3}` : last3;
   return `₹${grouped}`;
+}
+
+// Hosts next.config.mjs lets next/image optimise. Anything else — API
+// uploads, or a URL an admin pasted — is served unoptimised rather than
+// crashing the page with an "unconfigured host" error.
+const OPTIMISED_HOSTS = ['lh3.googleusercontent.com', 'randomuser.me'];
+const PHOTO_PLACEHOLDER = '/logo-mark.png';
+
+/** `src` + `unoptimized` for a profile photo in next/image, with a branded fallback. */
+export function photoProps(photo: string | null | undefined): { src: string; unoptimized: boolean } {
+  const src = mediaUrl(photo);
+  if (!src) return { src: PHOTO_PLACEHOLDER, unoptimized: true };
+  if (src.startsWith('/')) return { src, unoptimized: false };
+  try {
+    return { src, unoptimized: !OPTIMISED_HOSTS.includes(new URL(src).hostname) };
+  } catch {
+    return { src: PHOTO_PLACEHOLDER, unoptimized: true };
+  }
 }

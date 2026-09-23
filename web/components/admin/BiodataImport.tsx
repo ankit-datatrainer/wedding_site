@@ -3,6 +3,9 @@
 import { useRef, useState } from 'react';
 import { Icon } from '@/components/Icon';
 import { importBiodata, type BiodataImportResult } from '@/lib/adminApi';
+import { useAdminAuth } from '@/lib/adminAuth';
+import type { ProfileStatus } from '@/lib/types';
+import { MatchList } from './MatchList';
 
 /**
  * Bulk biodata import dialog.
@@ -25,6 +28,9 @@ export function BiodataImport({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState<BiodataImportResult | null>(null);
+  const { can } = useAdminAuth();
+  const canApprove = can('profiles.approve');
+  const [publish, setPublish] = useState<ProfileStatus>('approved');
 
   function addFiles(list: FileList | null) {
     if (!list) return;
@@ -46,7 +52,7 @@ export function BiodataImport({
     setBusy(true);
     setError('');
     try {
-      const res = await importBiodata(files);
+      const res = await importBiodata(files, canApprove ? publish : 'pending');
       setResult(res);
       if (res.summary.imported > 0) onImported();
     } catch (err) {
@@ -64,7 +70,7 @@ export function BiodataImport({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-on-surface/50 p-4 backdrop-blur-sm">
-      <div className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-surface shadow-float">
+      <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-surface shadow-float">
         <header className="flex items-center justify-between border-b border-outline-variant/30 px-6 py-4">
           <div>
             <h2 className="font-heading text-[19px] text-primary">Import biodata PDFs</h2>
@@ -95,27 +101,39 @@ export function BiodataImport({
                   <h3 className="mb-2 font-body text-label-md uppercase tracking-wide text-on-surface-variant">
                     Added to the directory
                   </h3>
-                  <ul className="flex flex-col gap-1.5">
+                  <p className="mb-3 font-body text-label-md text-on-surface-variant">
+                    {result.summary.status === 'approved'
+                      ? 'These profiles are live on the website now.'
+                      : 'These profiles are pending — they appear on the website once approved in Profiles & Approvals.'}
+                  </p>
+                  <ul className="flex flex-col gap-4">
                     {result.imported.map((item) => (
-                      <li
-                        key={item.filename}
-                        className="flex flex-wrap items-center gap-2 rounded-lg bg-surface-container-low px-3 py-2.5"
-                      >
-                        <Icon name="check_circle" className="text-[17px] text-secondary" filled />
-                        <span className="font-body text-body-md text-on-surface">
-                          {item.profile.name}
-                        </span>
-                        <span className="font-body text-label-md text-on-surface-variant">
-                          from {item.filename}
-                        </span>
-                        {item.warnings.length > 0 && (
-                          <span
-                            title={item.warnings.join('\n')}
-                            className="ml-auto font-body text-label-md text-on-surface-variant"
-                          >
-                            {item.warnings.length} field
-                            {item.warnings.length === 1 ? '' : 's'} not read
+                      <li key={item.filename} className="rounded-xl bg-surface-container-low p-3">
+                        <div className="flex flex-wrap items-center gap-2 px-1 pb-2">
+                          <Icon name="check_circle" className="text-[17px] text-secondary" filled />
+                          <span className="font-body text-body-md font-semibold text-on-surface">
+                            {item.profile.name}
                           </span>
+                          <span className="font-body text-label-md text-on-surface-variant">
+                            {item.profile.age} yrs · {item.profile.gender} · from {item.filename}
+                          </span>
+                          {item.warnings.length > 0 && (
+                            <span
+                              title={item.warnings.join('; ')}
+                              className="ml-auto font-body text-label-md text-on-surface-variant"
+                            >
+                              {item.warnings.length} field
+                              {item.warnings.length === 1 ? '' : 's'} not read
+                            </span>
+                          )}
+                        </div>
+                        {can('matches.view') && (
+                          <div className="rounded-lg bg-surface p-3">
+                            <p className="mb-2 font-body text-label-md uppercase tracking-wide text-on-surface-variant">
+                              Top matches for {item.profile.name.split(' ')[0]}
+                            </p>
+                            <MatchList items={item.matches} compact />
+                          </div>
                         )}
                       </li>
                     ))}
@@ -199,6 +217,33 @@ export function BiodataImport({
                   onChange={(e) => addFiles(e.target.files)}
                 />
               </div>
+
+              {canApprove ? (
+                <fieldset className="flex flex-wrap gap-2">
+                  <legend className="mb-2 font-body text-label-md uppercase tracking-wide text-on-surface-variant">
+                    After import
+                  </legend>
+                  {([
+                    ['approved', 'Approve & publish on the website'],
+                    ['pending', 'Keep pending for review'],
+                  ] as const).map(([v, label]) => (
+                    <label
+                      key={v}
+                      className={`flex cursor-pointer items-center gap-2 rounded-lg border-[1.5px] px-3 py-2 font-body text-label-md ${
+                        publish === v ? 'border-secondary bg-secondary-fixed/40 text-secondary' : 'border-outline-variant text-on-surface-variant'
+                      }`}
+                    >
+                      <input type="radio" name="publish" className="accent-[#b02559]" checked={publish === v} onChange={() => setPublish(v)} />
+                      {label}
+                    </label>
+                  ))}
+                </fieldset>
+              ) : (
+                <p className="flex items-center gap-2 rounded-lg bg-tertiary-fixed/40 px-3 py-2 font-body text-label-md text-on-tertiary-fixed-variant">
+                  <Icon name="info" className="text-[16px]" />
+                  Imported profiles are sent for approval before they appear on the website.
+                </p>
+              )}
 
               {files.length > 0 && (
                 <ul className="flex flex-col gap-1.5">

@@ -48,7 +48,7 @@ export default function AdminPaymentsPage() {
     .reduce((s, o) => s + o.amount, 0);
 
   return (
-    <AdminShell title="Payments" description="Membership orders and their status">
+    <AdminShell title="Payments" description="Membership orders and their status" permission="payments.view">
       {error && (
         <p role="alert" className="mb-4 font-body text-label-md text-error">
           {error}

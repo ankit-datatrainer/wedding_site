@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { Icon } from './Icon';
-import { api } from '@/lib/api';
+import { api, photoProps } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import type { Profile } from '@/lib/types';
 
@@ -38,7 +38,7 @@ export function ProfileCard({ profile }: { profile: Profile }) {
     <article className="overflow-hidden rounded-xl bg-surface shadow-card transition-transform duration-300 hover:-translate-y-1">
       <div className="relative h-[290px] sm:h-[320px] w-full overflow-hidden">
         <Image
-          src={profile.photo}
+          {...photoProps(profile.photo)}
           alt={`Portrait of ${profile.name}`}
           fill
           sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"

@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "EverAfter matrimonial API — Node.js/Express, Supabase, Razorpay",
+  "description": "EverAfter matrimonial API \u00e2\u20ac\u201d Node.js/Express, Supabase, Razorpay",
   "main": "src/index.js",
   "scripts": {
     "dev": "node --watch src/index.js",
@@ -13,17 +13,21 @@
     "verify": "node src/verify.js",
     "test:biodata": "node src/biodata.test.js",
     "test:biodata:api": "node src/biodata.api.test.js",
-    "test:gender": "node src/gender-matching.test.js"
+    "test:gender": "node src/gender-matching.test.js",
+    "test:admin": "node src/admin-features.test.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
+    "exceljs": "^4.4.0",
     "express": "^4.19.2",
     "jsonwebtoken": "^9.0.2",
     "multer": "^2.2.0",
+    "nodemailer": "^10.0.10",
     "pdf-parse": "^2.4.5",
+    "pdfkit": "^0.20.2",
     "razorpay": "^2.9.4",
     "zod": "^3.23.8"
   }

@@ -39,7 +39,7 @@ simulation. Both are reported at `GET /api/health`.
 | `/onboarding` | new — the full matrimonial profile wizard (family, career, horoscope, photos) every member fills in after registering |
 | `/matches` | new — the matching algorithm's output: opposite-gender profiles ranked by `scoreMatch`, no filters to set |
 | `/interests` | new — profiles you've expressed interest in (tabbed with `/shortlist`) |
-| `/admin/login`, `/admin/dashboard` | new — super-admin panel: search members, view full profiles, export CSV |
+| `/admin/*` | new — admin panel: overview, profiles & approvals, biodata upload with matching, members, export (Excel / PDF / CSV), payments, newsletter, parent emails, team & roles |
 
 The "Eternal Union" design tokens from the original Stitch design system are
 transcribed into [web/tailwind.config.ts](web/tailwind.config.ts) — colours,
@@ -68,7 +68,20 @@ truth for the design language; the Stitch export has been removed.
 | POST | `/api/admin/login` | separate from member login — only succeeds for a `role: 'admin'` account |
 | GET | `/api/admin/members` | paginated, searchable member list with full profiles (admin) |
 | GET | `/api/admin/members/:id` | single member's full profile (admin) |
-| GET | `/api/admin/export.csv` | every registered member as a downloadable CSV (admin) |
+| GET | `/api/admin/export.csv` | every registered member as a downloadable CSV (`export.data`) |
+| GET | `/api/admin/me` | the signed-in panel user, their role name and permission list |
+| GET | `/api/admin/profiles?status=` | directory profiles, filterable by `pending` / `approved` / `rejected` |
+| POST | `/api/admin/profiles` | create a profile with full biodata `details`; `status` honoured only with `profiles.approve` |
+| POST | `/api/admin/profiles/parse-biodata` | read one biodata PDF into form values, nothing saved |
+| POST | `/api/admin/profiles/import-biodata` | bulk PDF import; each result carries its top 3 matches |
+| POST | `/api/admin/profiles/:id/status` | approve (publish) / reject / unpublish (`profiles.approve`) |
+| GET | `/api/admin/profiles/:id/matches` | ranked matches (1, 2, 3…) with score and reasons (`matches.view`) |
+| POST | `/api/admin/profiles/match-preview` | the same ranking for an unsaved biodata |
+| POST | `/api/admin/uploads/photo` | upload a directory-profile photo |
+| GET | `/api/admin/export/columns` | exportable columns per dataset |
+| POST | `/api/admin/export/preview` · `/export` | preview / download selected rows × columns as `xlsx`, `pdf` (`table` or `sheets`) or `csv` |
+| GET | `/api/admin/email-logs` | every parent confirmation email and its delivery status |
+| GET/POST/PATCH/DELETE | `/api/admin/roles` · `/api/admin/team` | roles, their permissions, and team accounts (super admin only) |
 
 ## Admin panel
 
@@ -79,13 +92,56 @@ one-line change, no SQL needed. Left unset, the server falls back to
 `admin@everafter.com` / `ChangeMe123!` and prints a warning on startup —
 **always set both before deploying anywhere public.**
 
-The dashboard lists every registered member (search by name/email, paginated),
-a detail drawer per member showing the complete profile including uploaded
-photos, and a CSV export of the full member table.
-
 Admin sessions are entirely separate from member sessions — different login
 endpoint, different token, different `localStorage` key — so a browser can
 have both open without either signing the other out.
+
+### Profiles & approvals
+
+Every directory profile has a status: **pending**, **approved** (live) or
+**rejected**. Only approved profiles appear anywhere on the public site —
+`/browse`, `/matches`, profile pages, shortlists. Someone with the
+`profiles.approve` permission publishes a profile with one click; anyone
+without it (e.g. Staff) can only create pending profiles. Profiles carry the
+full biodata — family, horoscope, education, contact and reference — in a
+`details` blob, and the public profile page shows the non-private parts.
+
+### Upload biodata & matching
+
+`/admin/upload` is a three-step flow: upload a biodata PDF (or type it in) →
+review and complete every field → see the **ranked matches** — 1, 2, 3… —
+against every live opposite-gender profile and registered member, each with
+its score and the exact reasons behind it (`server/src/matching.js`). Then
+publish it or save it for approval. Bulk PDF import shows the top 3 matches
+for each imported profile.
+
+### Team & roles
+
+The super admin creates team accounts at `/admin/team` and assigns each a
+role. Four roles are seeded — **Staff** (upload profiles only; everything
+they add waits for approval), **Content Editor**, **Manager** and
+**Developer** — and new ones can be created with any combination of the
+permissions in `server/src/permissions.js`. Permissions are enforced by the
+API on every request; the panel only hides what a role can't use. Suspending
+or re-roling an account takes effect immediately.
+
+### Export
+
+`/admin/export` shows every biodata (directory profiles or registered
+members) as a table. Tick rows (or export everything the filters match), pick
+columns, and download as **Excel** (logo header, filters, frozen header row),
+**PDF** (a landscape table, or one branded biodata sheet per person with
+photo) or **CSV**. The branding comes from `server/assets/`.
+
+### Registration reference & parent confirmation
+
+Every new registration must include a reference (name, phone, relation) —
+checked in the form and again by the API. When a member enters a father's or
+mother's email they're asked whether to send that parent a confirmation; the
+result is shown on the success screen, recorded on the member, and listed in
+**Parent Emails** in the admin panel. Mail is sent over SMTP when `SMTP_HOST`
+is set, otherwise printed to the API console. Members who joined before
+references were required are asked to add one on their dashboard.
 
 ## Member profiles &amp; photo uploads
 
@@ -139,6 +195,13 @@ real individuals' photos.
 3. `cd server && npm run seed` to load the profile and story content.
 
 Restart the API — it switches from in-memory to Supabase with no code changes.
+
+**Existing databases:** run
+[server/supabase/migrations/002_team_roles_approval.sql](server/supabase/migrations/002_team_roles_approval.sql)
+once in the SQL editor, then restart the API. It adds profile approval, full
+biodata details, team roles and the email log. Until it has run, the API keeps
+serving the site and says so on boot and at `GET /api/health`; only those
+features are unavailable. (`schema.sql` already includes it for new projects.)
 RLS is on for every table; the API uses the service role key and enforces access
 in application code.
 
@@ -156,3 +219,19 @@ membership. The service role key and the Razorpay secret stay server-side —
 neither is ever sent to the browser.
 
 Set a long random `JWT_SECRET` before deploying anywhere public.
+
+### Email
+
+Set `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` and `MAIL_FROM` in
+`server/.env` to actually deliver parent confirmation emails. Without them,
+emails are printed to the API console and logged as "Logged only".
+
+## Tests
+
+```bash
+cd server
+npm run test:admin        # roles, approvals, matching, exports, reference (boots its own in-memory API)
+npm run test:gender       # opposite-gender matching
+npm run test:biodata      # biodata PDF parser
+npm run verify            # full API walkthrough against a running API
+```

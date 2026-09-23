@@ -84,6 +84,7 @@ const reg = await req('/api/auth/register', {
   body: JSON.stringify({
     profileFor: 'self', firstName: 'Verify', lastName: 'Member',
     gender: 'male', dob: '1993-04-12', email: memberEmail, password: PASSWORD,
+    details: { referenceName: 'Test Reference', referencePhone: '9876543210', referredBy: 'Family friend' },
   }),
 });
 check('POST /api/auth/register', reg.status === 201, reg.body?.error || reg.body?.user?.email);
@@ -95,6 +96,7 @@ const dup = await req('/api/auth/register', {
   body: JSON.stringify({
     profileFor: 'self', firstName: 'Verify', lastName: 'Member',
     gender: 'male', dob: '1993-04-12', email: memberEmail, password: PASSWORD,
+    details: { referenceName: 'Test Reference', referencePhone: '9876543210', referredBy: 'Family friend' },
   }),
 });
 check('duplicate email rejected', dup.status === 409);
@@ -162,6 +164,7 @@ const regF = await req('/api/auth/register', {
   body: JSON.stringify({
     profileFor: 'self', firstName: 'Verify', lastName: 'Female',
     gender: 'female', dob: '1996-08-20', email: femaleEmail, password: PASSWORD,
+    details: { referenceName: 'Test Reference', referencePhone: '9876543210', referredBy: 'Family friend' },
   }),
 });
 const AUTH_F = { Authorization: `Bearer ${regF.body?.token}` };
@@ -278,7 +281,7 @@ const csvRes = await fetch(`${BASE}/api/admin/export.csv`, { headers: ADMIN });
 const csv = await csvRes.text();
 check('GET /api/admin/export.csv', csvRes.status === 200 && csv.includes(memberEmail),
   `${csv.split('\r\n').length - 1} rows`);
-check('CSV includes profile columns', csv.includes('Amritsar') && csv.includes('religion'));
+check('CSV includes profile columns', csv.includes('Amritsar') && csv.includes('Religion') && csv.includes('Reference Name'));
 
 const csvAsMember = await fetch(`${BASE}/api/admin/export.csv`, { headers: AUTH });
 check('member blocked from CSV export', csvAsMember.status === 403);

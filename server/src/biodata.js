@@ -823,6 +823,27 @@ export function toProfileRow(fields) {
 }
 
 /** The fields a `profiles` row cannot be created without. */
+// Everything a biodata carries that has no column on `profiles` — kept on
+// the profile's `details` jsonb so an admin-uploaded biodata loses nothing.
+export const PROFILE_DETAIL_KEYS = [
+  'dob', 'timeOfBirth', 'placeOfBirth', 'weightKg', 'complexion', 'bloodGroup',
+  'smoking', 'drinking', 'disability', 'gothram', 'manglik', 'rashi', 'nakshatra',
+  'state', 'country', 'address', 'pincode', 'college', 'employer', 'annualIncome',
+  'fatherName', 'fatherOccupation', 'motherName', 'motherOccupation', 'siblings',
+  'familyType', 'familyStatus', 'familyValues', 'phone', 'email',
+  'referenceName', 'referencePhone', 'referredBy', 'partnerExpectations',
+];
+
+/** Shapes parsed fields for a directory profile's `details` blob. */
+export function toProfileDetails(fields) {
+  const details = {};
+  for (const key of PROFILE_DETAIL_KEYS) {
+    const v = fields[key];
+    if (v !== undefined && v !== null && String(v).trim() !== '') details[key] = String(v).trim().slice(0, 2000);
+  }
+  return details;
+}
+
 export function missingRequired(fields) {
   const missing = [];
   if (!fields.name) missing.push('name');

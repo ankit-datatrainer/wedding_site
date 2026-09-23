@@ -3,7 +3,7 @@ import express from 'express';
 import cors from 'cors';
 import { config } from './config.js';
 import { optionalAuth } from './auth.js';
-import { ensureAdminSeeded, usingSupabase } from './store.js';
+import { detectSchema, ensureAdminSeeded, ensureDefaultRoles, schema, usingSupabase } from './store.js';
 import authRoutes from './routes/auth.js';
 import adminRoutes from './routes/admin.js';
 import profileRoutes, { interestsRouter, matchesRouter, shortlistRouter } from './routes/profiles.js';
@@ -23,6 +23,8 @@ app.get('/api/health', (_req, res) => {
     ok: true,
     service: 'everafter-api',
     database: usingSupabase ? 'supabase' : 'in-memory (no Supabase keys set)',
+    schema: schema.v2 ? 'up to date' : 'migration 002 pending — see server/supabase/migrations',
+    email: config.smtp.enabled ? 'smtp' : 'console log (no SMTP_HOST set)',
     payments: config.razorpay.enabled ? 'razorpay (live keys)' : 'simulated (no Razorpay keys set)',
   });
 });
@@ -49,10 +51,12 @@ async function start() {
   // Seeded before the server accepts traffic so /api/admin/login always has
   // an account to check against, even on a cold in-memory boot.
   try {
+    await detectSchema();
     await ensureAdminSeeded({
       email: config.admin.email,
       passwordHash: await bcrypt.hash(config.admin.password, 10),
     });
+    await ensureDefaultRoles();
   } catch (err) {
     // The overwhelmingly common cause is Supabase credentials pointing at a
     // database where schema.sql was never applied. Say so plainly instead of
@@ -76,6 +80,13 @@ async function start() {
     console.log(`[api] database: ${usingSupabase ? 'Supabase' : 'in-memory seed data'}`);
     console.log(`[api] payments: ${config.razorpay.enabled ? 'Razorpay live keys' : 'simulated'}`);
     console.log(`[api] admin login: ${config.admin.email}`);
+    if (!schema.v2) {
+      console.log(
+        '[api] NOTICE: database migration 002 has not been run. The site works, but profile\n' +
+          '[api] approval, Team & Roles and the email log stay disabled until you run\n' +
+          '[api] server/supabase/migrations/002_team_roles_approval.sql in the Supabase SQL editor.'
+      );
+    }
     if (config.admin.isDefaultPassword) {
       console.log(
         '[api] WARNING: ADMIN_PASSWORD is not set — using the default dev password. ' +

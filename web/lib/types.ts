@@ -24,6 +24,61 @@ export type Profile = {
   is_interested?: boolean;
   /** Present only on /api/matches results — see server/src/store.js#scoreMatch. */
   match_score?: number;
+  /** Approval workflow — only 'approved' profiles appear on the public site. */
+  status?: ProfileStatus;
+  /** Full biodata beyond the columns above (family, horoscope, reference…). */
+  details?: ProfileDetails;
+  source?: 'manual' | 'biodata' | null;
+  created_by?: string | null;
+  approved_by?: string | null;
+  approved_at?: string | null;
+  review_note?: string | null;
+};
+
+export type ProfileStatus = 'pending' | 'approved' | 'rejected';
+
+export type ProfileDetails = Partial<
+  Record<
+    | 'dob' | 'timeOfBirth' | 'placeOfBirth' | 'weightKg' | 'complexion' | 'bloodGroup'
+    | 'smoking' | 'drinking' | 'disability' | 'gothram' | 'manglik' | 'rashi' | 'nakshatra'
+    | 'state' | 'country' | 'address' | 'pincode' | 'college' | 'employer' | 'annualIncome'
+    | 'fatherName' | 'fatherOccupation' | 'motherName' | 'motherOccupation' | 'siblings'
+    | 'familyType' | 'familyStatus' | 'familyValues' | 'phone' | 'email'
+    | 'referenceName' | 'referencePhone' | 'referredBy' | 'partnerExpectations',
+    string
+  >
+>;
+
+/** One ranked candidate from the admin biodata matcher (server/src/matching.js). */
+export type MatchCandidate = {
+  rank: number;
+  kind: 'profile' | 'member';
+  id: string;
+  name: string;
+  gender: string;
+  age: number | null;
+  religion?: string;
+  community?: string;
+  location?: string;
+  profession?: string;
+  education?: string;
+  photo?: string;
+  verified?: boolean;
+  email?: string;
+  score: number;
+  reasons: { points: number; label: string }[];
+};
+
+export type ParentNotification = {
+  relation: string;
+  email: string;
+  status: 'sent' | 'logged' | 'failed';
+  sentAt: string;
+};
+
+export type RegisterResult = {
+  notifications: ParentNotification[];
+  reference?: { name?: string; phone?: string; relation?: string };
 };
 
 export type Paged<T> = {
@@ -100,6 +155,7 @@ export type MemberDetails = {
   aboutMe?: string;
   partnerExpectations?: string;
   partnerPreferences?: PartnerPreferences;
+  parentNotifications?: ParentNotification[];
 };
 
 export type PartnerPreferences = {
@@ -120,7 +176,8 @@ export type User = {
   dob: string;
   profile_for: string;
   plan_id: string | null;
-  role: 'member' | 'admin';
+  role: 'member' | 'admin' | 'staff';
+  admin_role_id?: string | null;
   phone: string | null;
   photo_url: string | null;
   photos: string[];

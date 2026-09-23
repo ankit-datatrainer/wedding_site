@@ -9,6 +9,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { config } from './config.js';
 import { profiles as seedProfiles, stories as seedStories } from './data/seed.js';
+import { DEFAULT_ROLES } from './permissions.js';
 
 export const usingSupabase = config.supabase.enabled;
 
@@ -17,6 +18,50 @@ export const supabase = usingSupabase
       auth: { persistSession: false, autoRefreshToken: false },
     })
   : null;
+
+/**
+ * Which optional schema features the database actually has. In-memory mode
+ * always has everything; a Supabase project only has migration 002's
+ * columns/tables once server/supabase/migrations/002_team_roles_approval.sql
+ * has been run. Filled in by detectSchema() at boot, before any traffic.
+ */
+export const schema = { v2: !usingSupabase };
+
+export async function detectSchema() {
+  if (!usingSupabase) return schema;
+  const probes = await Promise.all([
+    supabase.from('profiles').select('status, details, source, review_note').limit(1),
+    supabase.from('admin_roles').select('id').limit(1),
+    supabase.from('users').select('admin_role_id').limit(1),
+    supabase.from('email_logs').select('id').limit(1),
+  ]);
+  schema.v2 = probes.every((r) => !r.error);
+  return schema;
+}
+
+/** Thrown by features that need migration 002 when it hasn't been run. */
+export function requireSchemaV2() {
+  if (schema.v2) return;
+  const err = new Error(
+    'This feature needs a one-time database update. Run server/supabase/migrations/002_team_roles_approval.sql in the Supabase SQL editor, then restart the API.'
+  );
+  err.status = 503;
+  throw err;
+}
+
+// Columns added by migration 002. Stripped from writes against a database
+// that doesn't have them yet, so creating/editing profiles keeps working.
+const V2_PROFILE_COLUMNS = ['status', 'details', 'source', 'created_by', 'approved_by', 'approved_at', 'review_note'];
+function forDb(row) {
+  if (schema.v2) return row;
+  const out = { ...row };
+  for (const k of V2_PROFILE_COLUMNS) delete out[k];
+  return out;
+}
+
+/** Only approved profiles are ever shown on the public site. Legacy rows with no status count as approved. */
+export const isPublished = (p) => !p.status || p.status === 'approved';
+const publishedOnly = (sb) => (schema.v2 ? sb.eq('status', 'approved') : sb);
 
 // ---------------------------------------------------------------- memory ---
 
@@ -28,6 +73,8 @@ const mem = {
   interests: [], // { user_id, profile_id, created_at }
   orders: [], // { id, user_id, plan_id, amount, currency, status, payment_id }
   subscribers: [], // { email, created_at }
+  roles: DEFAULT_ROLES.map((r) => ({ ...r, created_at: new Date().toISOString() })),
+  emailLogs: [],
 };
 
 let idSeq = 1;
@@ -141,7 +188,7 @@ export async function listProfiles(query = {}, viewerId) {
   const effectiveGender = targetGender || query.gender;
 
   if (usingSupabase) {
-    let sb = supabase.from('profiles').select('*', { count: 'exact' });
+    let sb = publishedOnly(supabase.from('profiles').select('*', { count: 'exact' }));
 
     if (effectiveGender) sb = sb.eq('gender', effectiveGender);
     if (query.minAge) sb = sb.gte('age', Number(query.minAge));
@@ -173,7 +220,7 @@ export async function listProfiles(query = {}, viewerId) {
   }
 
   const effectiveQuery = effectiveGender ? { ...query, gender: effectiveGender } : query;
-  const filtered = applySort(applyFilters(mem.profiles, effectiveQuery), sort);
+  const filtered = applySort(applyFilters(mem.profiles.filter(isPublished), effectiveQuery), sort);
   const from = (page - 1) * pageSize;
   return {
     items: await annotateViewerFlags(filtered.slice(from, from + pageSize), viewerId),
@@ -192,7 +239,7 @@ export async function getProfile(id, viewerId) {
   } else {
     profile = mem.profiles.find((p) => p.id === id) || null;
   }
-  if (!profile) return null;
+  if (!profile || !isPublished(profile)) return null;
 
   if (viewerId) {
     const viewer = await getUserById(viewerId);
@@ -303,15 +350,13 @@ export async function getMatches(viewerId, { page = 1, pageSize = 12 } = {}) {
 
   let candidates;
   if (usingSupabase) {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('gender', targetGender)
-      .limit(500);
+    const { data, error } = await publishedOnly(
+      supabase.from('profiles').select('*').eq('gender', targetGender)
+    ).limit(500);
     if (error) throw error;
     candidates = data ?? [];
   } else {
-    candidates = mem.profiles.filter((p) => p.gender === targetGender);
+    candidates = mem.profiles.filter((p) => p.gender === targetGender && isPublished(p));
   }
 
   const scored = candidates
@@ -601,12 +646,12 @@ export async function listShortlist(userId) {
       .select('profile_id, profiles(*)')
       .eq('user_id', userId);
     if (error) throw error;
-    const items = (data ?? []).map((r) => r.profiles).filter(Boolean);
+    const items = (data ?? []).map((r) => r.profiles).filter((p) => p && isPublished(p));
     const filtered = targetGender ? items.filter((p) => p.gender === targetGender) : items;
     return annotateViewerFlags(filtered, userId);
   }
   const ids = mem.shortlists.filter((s) => s.user_id === userId).map((s) => s.profile_id);
-  const items = mem.profiles.filter((p) => ids.includes(p.id));
+  const items = mem.profiles.filter((p) => ids.includes(p.id) && isPublished(p));
   const filtered = targetGender ? items.filter((p) => p.gender === targetGender) : items;
   return annotateViewerFlags(filtered, userId);
 }
@@ -626,12 +671,12 @@ export async function listInterests(userId) {
       .select('profile_id, profiles(*)')
       .eq('user_id', userId);
     if (error) throw error;
-    const items = (data ?? []).map((r) => r.profiles).filter(Boolean);
+    const items = (data ?? []).map((r) => r.profiles).filter((p) => p && isPublished(p));
     const filtered = targetGender ? items.filter((p) => p.gender === targetGender) : items;
     return annotateViewerFlags(filtered, userId);
   }
   const ids = mem.interests.filter((s) => s.user_id === userId).map((s) => s.profile_id);
-  const items = mem.profiles.filter((p) => ids.includes(p.id));
+  const items = mem.profiles.filter((p) => ids.includes(p.id) && isPublished(p));
   const filtered = targetGender ? items.filter((p) => p.gender === targetGender) : items;
   return annotateViewerFlags(filtered, userId);
 }
@@ -706,7 +751,7 @@ export async function getAdminStats() {
 
     const [
       members, newMembers, premium, maleProfiles, femaleProfiles,
-      verifiedProfiles, shortlists, interests, paidOrders, subscribers,
+      verifiedProfiles, shortlists, interests, paidOrders, subscribers, pendingProfiles,
     ] = await Promise.all([
       countOf('users', (q) => q.eq('role', 'member')),
       countOf('users', (q) => q.eq('role', 'member').gte('created_at', weekAgo)),
@@ -718,6 +763,7 @@ export async function getAdminStats() {
       countOf('interests'),
       countOf('orders', (q) => q.eq('status', 'paid')),
       countOf('newsletter_subscribers'),
+      schema.v2 ? countOf('profiles', (q) => q.eq('status', 'pending')) : Promise.resolve(0),
     ]);
 
     const { data: revenueRows, error: revErr } = await supabase
@@ -730,7 +776,7 @@ export async function getAdminStats() {
       members, newMembers, premium,
       profiles: maleProfiles + femaleProfiles,
       maleProfiles, femaleProfiles, verifiedProfiles,
-      shortlists, interests, paidOrders, subscribers,
+      shortlists, interests, paidOrders, subscribers, pendingProfiles,
       revenue: (revenueRows ?? []).reduce((sum, r) => sum + (r.amount || 0), 0),
     };
   }
@@ -749,6 +795,7 @@ export async function getAdminStats() {
     interests: mem.interests.length,
     paidOrders: paid.length,
     subscribers: mem.subscribers.length,
+    pendingProfiles: mem.profiles.filter((p) => p.status === 'pending').length,
     revenue: paid.reduce((sum, o) => sum + (o.amount || 0), 0),
   };
 }
@@ -770,7 +817,7 @@ export async function deleteUser(id) {
 }
 
 /** Admin-side directory listing — same table the public /browse reads. */
-export async function adminListProfiles({ page = 1, pageSize = 20, search = '', gender = '' } = {}) {
+export async function adminListProfiles({ page = 1, pageSize = 20, search = '', gender = '', status = '' } = {}) {
   const p = Math.max(1, Number(page) || 1);
   const size = Math.min(100, Math.max(1, Number(pageSize) || 20));
   const from = (p - 1) * size;
@@ -781,6 +828,7 @@ export async function adminListProfiles({ page = 1, pageSize = 20, search = '', 
       .select('*', { count: 'exact' })
       .order('created_at', { ascending: false });
     if (gender) sb = sb.eq('gender', gender);
+    if (status && schema.v2) sb = sb.eq('status', status);
     if (search) sb = sb.or(`name.ilike.%${search}%,profession.ilike.%${search}%,location.ilike.%${search}%`);
     const { data, count, error } = await sb.range(from, from + size - 1);
     if (error) throw error;
@@ -789,6 +837,7 @@ export async function adminListProfiles({ page = 1, pageSize = 20, search = '', 
 
   let rows = mem.profiles;
   if (gender) rows = rows.filter((r) => r.gender === gender);
+  if (status) rows = rows.filter((r) => (r.status || 'approved') === status);
   if (search) {
     const n = search.toLowerCase();
     rows = rows.filter((r) => [r.name, r.profession, r.location].join(' ').toLowerCase().includes(n));
@@ -803,10 +852,12 @@ export async function createProfile(profile) {
     created_at: new Date().toISOString(),
     last_active_days: 0,
     verified: false,
+    status: 'approved',
+    details: {},
     ...profile,
   };
   if (usingSupabase) {
-    const { data, error } = await supabase.from('profiles').insert(row).select().single();
+    const { data, error } = await supabase.from('profiles').insert(forDb(row)).select().single();
     if (error) throw error;
     return data;
   }
@@ -818,7 +869,7 @@ export async function updateProfile(id, patch) {
   if (usingSupabase) {
     const { data, error } = await supabase
       .from('profiles')
-      .update(patch)
+      .update(forDb(patch))
       .eq('id', id)
       .select()
       .maybeSingle();
@@ -939,6 +990,232 @@ export async function listActivity(limit = 20) {
   return [...decorate(mem.shortlists, 'shortlist'), ...decorate(mem.interests, 'interest')]
     .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
     .slice(0, limit);
+}
+
+// ------------------------------------------------ admin: profile lookups ---
+
+/** Any profile regardless of approval status — admin panel only. */
+export async function getProfileAdmin(id) {
+  if (usingSupabase) {
+    const { data, error } = await supabase.from('profiles').select('*').eq('id', id).maybeSingle();
+    if (error) throw error;
+    return data;
+  }
+  return mem.profiles.find((p) => p.id === id) || null;
+}
+
+/**
+ * Unpaginated profile rows for exports. `ids` (when non-empty) wins over the
+ * filters — it's the admin's explicit row selection.
+ */
+export async function listProfilesForExport({ ids = [], search = '', gender = '', status = '' } = {}) {
+  if (usingSupabase) {
+    let sb = supabase.from('profiles').select('*').order('created_at', { ascending: false });
+    if (ids.length) sb = sb.in('id', ids);
+    else {
+      if (gender) sb = sb.eq('gender', gender);
+      if (status && schema.v2) sb = sb.eq('status', status);
+      if (search) sb = sb.or(`name.ilike.%${search}%,profession.ilike.%${search}%,location.ilike.%${search}%`);
+    }
+    const { data, error } = await sb.limit(5000);
+    if (error) throw error;
+    return data ?? [];
+  }
+  let rows = [...mem.profiles].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  if (ids.length) return rows.filter((r) => ids.includes(r.id));
+  if (gender) rows = rows.filter((r) => r.gender === gender);
+  if (status) rows = rows.filter((r) => (r.status || 'approved') === status);
+  if (search) {
+    const n = search.toLowerCase();
+    rows = rows.filter((r) => [r.name, r.profession, r.location].join(' ').toLowerCase().includes(n));
+  }
+  return rows;
+}
+
+/** Members for exports, same `ids`-wins-over-search rule. */
+export async function listMembersForExport({ ids = [], search = '' } = {}) {
+  let rows = await listAllUsers();
+  if (ids.length) return rows.filter((u) => ids.includes(u.id));
+  if (search) {
+    const n = search.toLowerCase();
+    rows = rows.filter((u) => [u.email, u.first_name, u.last_name].join(' ').toLowerCase().includes(n));
+  }
+  return rows;
+}
+
+/**
+ * Everyone a profile of `gender` could be matched against: published
+ * directory profiles and registered members of the opposite gender.
+ */
+export async function listMatchCandidates(gender) {
+  const target = OPPOSITE_GENDER[gender];
+  if (!target) return { profiles: [], members: [] };
+
+  if (usingSupabase) {
+    const [pr, us] = await Promise.all([
+      publishedOnly(supabase.from('profiles').select('*').eq('gender', target)).limit(2000),
+      supabase.from('users').select('*').eq('role', 'member').eq('gender', target).limit(2000),
+    ]);
+    if (pr.error) throw pr.error;
+    if (us.error) throw us.error;
+    return { profiles: pr.data ?? [], members: us.data ?? [] };
+  }
+  return {
+    profiles: mem.profiles.filter((p) => p.gender === target && isPublished(p)),
+    members: mem.users.filter((u) => (u.role || 'member') === 'member' && u.gender === target),
+  };
+}
+
+// ------------------------------------------------------------ team roles ---
+
+/** Seeds the default roles (Staff, Manager, Developer, Content Editor) once. */
+export async function ensureDefaultRoles() {
+  if (!usingSupabase || !schema.v2) return;
+  const { data, error } = await supabase.from('admin_roles').select('id');
+  if (error) throw error;
+  const have = new Set((data ?? []).map((r) => r.id));
+  const missing = DEFAULT_ROLES.filter((r) => !have.has(r.id));
+  if (missing.length) {
+    const { error: insErr } = await supabase.from('admin_roles').insert(missing);
+    if (insErr) throw insErr;
+  }
+}
+
+export async function listRoles() {
+  if (usingSupabase) {
+    requireSchemaV2();
+    const { data, error } = await supabase.from('admin_roles').select('*').order('created_at');
+    if (error) throw error;
+    return data ?? [];
+  }
+  return [...mem.roles];
+}
+
+export async function getRole(id) {
+  if (!id) return null;
+  if (usingSupabase) {
+    if (!schema.v2) return null;
+    const { data, error } = await supabase.from('admin_roles').select('*').eq('id', id).maybeSingle();
+    if (error) throw error;
+    return data;
+  }
+  return mem.roles.find((r) => r.id === id) || null;
+}
+
+export async function createRole({ name, description, permissions }) {
+  const row = {
+    id: nextId('role'),
+    name,
+    description: description || '',
+    permissions,
+    is_system: false,
+    created_at: new Date().toISOString(),
+  };
+  if (usingSupabase) {
+    requireSchemaV2();
+    const { data, error } = await supabase.from('admin_roles').insert(row).select().single();
+    if (error) throw error;
+    return data;
+  }
+  mem.roles.push(row);
+  return row;
+}
+
+export async function updateRole(id, patch) {
+  if (usingSupabase) {
+    requireSchemaV2();
+    const { data, error } = await supabase.from('admin_roles').update(patch).eq('id', id).select().maybeSingle();
+    if (error) throw error;
+    return data;
+  }
+  const r = mem.roles.find((x) => x.id === id);
+  if (!r) return null;
+  Object.assign(r, patch);
+  return r;
+}
+
+export async function deleteRole(id) {
+  if (usingSupabase) {
+    requireSchemaV2();
+    const { error } = await supabase.from('admin_roles').delete().eq('id', id);
+    if (error) throw error;
+    return true;
+  }
+  const i = mem.roles.findIndex((r) => r.id === id);
+  if (i < 0) return false;
+  mem.roles.splice(i, 1);
+  for (const u of mem.users) if (u.admin_role_id === id) u.admin_role_id = null;
+  return true;
+}
+
+// ------------------------------------------------------- team accounts ---
+
+export async function listTeam() {
+  if (usingSupabase) {
+    requireSchemaV2();
+    const { data, error } = await supabase
+      .from('users')
+      .select('*')
+      .in('role', ['admin', 'staff'])
+      .order('created_at');
+    if (error) throw error;
+    return data ?? [];
+  }
+  return mem.users
+    .filter((u) => u.role === 'admin' || u.role === 'staff')
+    .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+}
+
+/** Patches raw user columns (role id, password hash, names, details). */
+export async function updateUserColumns(id, patch) {
+  if (usingSupabase) {
+    const { data, error } = await supabase.from('users').update(patch).eq('id', id).select().maybeSingle();
+    if (error) throw error;
+    return data;
+  }
+  const u = mem.users.find((x) => x.id === id);
+  if (!u) return null;
+  Object.assign(u, patch);
+  return u;
+}
+
+export async function deleteTeamUser(id) {
+  if (usingSupabase) {
+    const { error } = await supabase.from('users').delete().eq('id', id).eq('role', 'staff');
+    if (error) throw error;
+    return true;
+  }
+  const i = mem.users.findIndex((u) => u.id === id && u.role === 'staff');
+  if (i < 0) return false;
+  mem.users.splice(i, 1);
+  return true;
+}
+
+// ------------------------------------------------------------ email log ---
+
+export async function addEmailLog(entry) {
+  if (usingSupabase) {
+    if (!schema.v2) return entry; // nowhere to persist it yet; the console log still has it
+    const { error } = await supabase.from('email_logs').insert(entry);
+    if (error) throw error;
+    return entry;
+  }
+  mem.emailLogs.unshift(entry);
+  return entry;
+}
+
+export async function listEmailLogs(limit = 200) {
+  if (usingSupabase) {
+    requireSchemaV2();
+    const { data, error } = await supabase
+      .from('email_logs')
+      .select('*')
+      .order('sent_at', { ascending: false })
+      .limit(limit);
+    if (error) throw error;
+    return data ?? [];
+  }
+  return mem.emailLogs.slice(0, limit);
 }
 
 export const _mem = mem;

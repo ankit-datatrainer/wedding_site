@@ -33,6 +33,19 @@ export const config = {
     isDefaultPassword: !bool(process.env.ADMIN_PASSWORD),
   },
 
+  // Outgoing mail (parent confirmation emails). Leave SMTP_HOST unset in
+  // development and messages are printed to the console instead.
+  smtp: {
+    host: process.env.SMTP_HOST || '',
+    port: Number(process.env.SMTP_PORT || 587),
+    user: process.env.SMTP_USER || '',
+    pass: process.env.SMTP_PASS || '',
+    from: process.env.MAIL_FROM || 'EverAfter <no-reply@everafter.com>',
+    get enabled() {
+      return bool(process.env.SMTP_HOST);
+    },
+  },
+
   uploadsDir: process.env.UPLOADS_DIR || 'uploads',
   maxUploadMb: 5,
   // Biodata PDFs run larger than photos — they often embed scans — and are
