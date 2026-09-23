@@ -13,9 +13,17 @@ if (!usingSupabase) {
 
 console.log(`Seeding ${config.supabase.url} ...`);
 
+// Delete any existing directory profiles so only the curated 8 Indian profiles remain
+const { error: dErr } = await supabase.from('profiles').delete().neq('id', '');
+if (dErr) {
+  console.warn('Warning when deleting existing profiles:', dErr.message);
+} else {
+  console.log('  cleared existing profiles table');
+}
+
 const { error: pErr } = await supabase.from('profiles').upsert(profiles, { onConflict: 'id' });
 if (pErr) throw pErr;
-console.log(`  profiles: ${profiles.length} rows`);
+console.log(`  profiles: ${profiles.length} rows inserted`);
 
 const { error: sErr } = await supabase
   .from('success_stories')

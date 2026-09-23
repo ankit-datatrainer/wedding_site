@@ -84,15 +84,31 @@ export type MemberDetails = {
 
   fatherName?: string;
   fatherOccupation?: string;
+  fatherEmail?: string;
   motherName?: string;
   motherOccupation?: string;
+  motherEmail?: string;
   siblings?: string;
   familyType?: string;
   familyStatus?: string;
   familyValues?: string;
 
+  referenceName?: string;
+  referencePhone?: string;
+  referredBy?: string;
+
   aboutMe?: string;
   partnerExpectations?: string;
+  partnerPreferences?: PartnerPreferences;
+};
+
+export type PartnerPreferences = {
+  professionType?: 'businessman' | 'job' | 'any';
+  diet?: 'vegetarian' | 'non_vegetarian' | 'any';
+  sameCaste?: boolean;
+  ageMin?: number | string;
+  ageMax?: number | string;
+  location?: string;
 };
 
 export type User = {

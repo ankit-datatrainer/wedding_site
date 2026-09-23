@@ -49,66 +49,74 @@ export default async function HomePage() {
         older arrangement clipped the stats row once the content grew taller
         than the box, which happened on every phone.
       */}
-      <section className="relative -mt-[80px] flex min-h-[680px] w-full flex-col justify-center overflow-hidden lg:min-h-[100svh]">
+      <section className="relative -mt-[80px] flex min-h-[720px] w-full flex-col justify-center overflow-hidden lg:min-h-[100svh]">
         <Image
-          src="/hero_bg.png"
-          alt="An Indian couple in traditional wedding attire smiling at each other"
+          src="/hero_bg.jpg"
+          alt="Royal Indian wedding bride and groom in luxury traditional wedding attire"
           fill
           priority
           sizes="100vw"
-          className="object-cover object-[68%_center] lg:object-center"
+          className="object-cover object-[70%_center] lg:object-center brightness-[1.02]"
         />
 
         {/*
-          Scrim: vertical on small screens so the copy stays legible over the
-          middle of the photograph, horizontal on large ones so the couple on
-          the right stays visible behind a clear left column.
+          Luxury Scrim: gentle royal warm gradient allowing the wedding couple and golden lighting
+          to remain brilliant and sharp while keeping text exceptionally readable.
         */}
         <div
           aria-hidden
-          className="absolute inset-0 bg-gradient-to-b from-surface via-surface/75 to-surface/95 lg:bg-gradient-to-r lg:from-surface lg:via-surface/70 lg:to-transparent"
+          className="absolute inset-0 bg-gradient-to-b from-surface/90 via-surface/60 to-surface/95 lg:bg-gradient-to-r lg:from-surface/95 lg:via-surface/75 lg:via-45% lg:to-transparent"
         />
 
-        <div className="relative z-10 mx-auto flex w-full max-w-container flex-col gap-10 px-margin-mobile pb-14 pt-[120px] sm:pt-[140px] lg:gap-14 lg:pb-20 lg:pt-[180px]">
-          <div className="flex max-w-2xl flex-col gap-5 rounded-2xl border border-white/60 bg-surface/80 p-6 shadow-float backdrop-blur-md sm:gap-6 sm:rounded-3xl sm:p-8 lg:p-12">
-            <h1 className="text-balance font-heading text-[32px] leading-[1.15] text-primary sm:text-display-lg-mobile lg:text-display-lg">
+        <div className="relative z-10 mx-auto flex w-full max-w-container flex-col gap-10 px-margin-mobile pb-14 pt-[130px] sm:pt-[150px] lg:gap-14 lg:pb-20 lg:pt-[175px]">
+          <div className="flex max-w-2xl flex-col gap-6 rounded-3xl border border-white/80 bg-surface/85 p-6 shadow-2xl backdrop-blur-xl ring-1 ring-black/5 sm:p-9 lg:p-12">
+            <div className="inline-flex w-fit items-center gap-2 rounded-full border border-secondary/30 bg-secondary/10 px-4 py-1.5 backdrop-blur-md">
+              <span className="flex h-2 w-2 rounded-full bg-secondary animate-pulse" />
+              <span className="font-body text-xs font-bold uppercase tracking-wider text-secondary">
+                India&apos;s Most Trusted Matrimonial Network
+              </span>
+            </div>
+
+            <h1 className="text-balance font-heading text-[32px] leading-[1.14] text-primary sm:text-display-lg-mobile lg:text-[50px] lg:leading-[1.12]">
               Find Your Forever <br className="hidden sm:inline" />
-              With Someone Who, <br className="hidden sm:inline" />
+              With Someone Who <br className="hidden sm:inline" />
               <span className="text-secondary">Truly Understands You</span>
             </h1>
 
             <p className="max-w-lg font-body text-body-md text-on-surface-variant sm:text-body-lg">
-              Thoughtful matchmaking for people who are serious about marriage — verified profiles,
-              real conversations, and families brought along for the journey.
+              Thoughtful matchmaking for cultured families and individuals serious about marriage — verified profiles,
+              meaningful conversations, and families brought along for the journey.
             </p>
 
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
               <Link
                 href="/register"
-                className="rounded-lg bg-secondary px-8 py-3.5 text-center font-body text-label-lg uppercase text-on-secondary shadow-md transition-all hover:bg-on-secondary-container"
+                className="group inline-flex items-center justify-center gap-2 rounded-xl bg-secondary px-8 py-4 text-center font-body text-label-lg font-bold uppercase tracking-wider text-on-secondary shadow-md transition-all hover:bg-on-secondary-container hover:shadow-lg"
               >
-                Create Free Profile
+                <span>Create Free Profile</span>
+                <Icon name="arrow_forward" className="text-[18px] transition-transform duration-200 group-hover:translate-x-1" />
               </Link>
               <Link
                 href="/browse"
-                className="rounded-lg border-[1.5px] border-secondary px-8 py-3.5 text-center font-body text-label-lg uppercase text-secondary transition-all hover:bg-secondary hover:text-on-secondary"
+                className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-secondary/70 bg-surface/60 px-8 py-4 text-center font-body text-label-lg font-bold uppercase tracking-wider text-secondary backdrop-blur-sm transition-all hover:bg-secondary hover:text-on-secondary"
               >
-                Browse Profiles
+                <Icon name="search" className="text-[18px]" />
+                <span>Browse Verified Profiles</span>
               </Link>
             </div>
 
-            <div className="mt-2 grid grid-cols-3 gap-3 border-t border-outline-variant/40 pt-6 sm:gap-6 lg:flex lg:items-center lg:gap-8">
+            <div className="mt-2 grid grid-cols-3 gap-3 border-t border-outline-variant/30 pt-6 sm:gap-6 lg:flex lg:items-center lg:gap-8">
               {HERO_STATS.map((stat) => (
                 <div
                   key={stat.label}
-                  className="flex flex-col items-center gap-2 text-center lg:flex-row lg:gap-3 lg:text-left"
+                  className="flex flex-col items-center gap-2 text-center lg:flex-row lg:gap-3.5 lg:text-left"
                 >
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-secondary-container/20 lg:h-12 lg:w-12">
-                    <Icon name={stat.icon} className="text-[20px] text-secondary lg:text-[24px]" />
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-secondary-container/25 text-secondary shadow-sm ring-1 ring-secondary/20 lg:h-12 lg:w-12">
+                    <Icon name={stat.icon} className="text-[22px] text-secondary" filled />
                   </span>
                   <span className="flex flex-col">
-                    <span className="font-body text-label-lg text-secondary">{stat.value}</span>
-                    <span className="font-body text-label-md text-on-surface-variant">
+                    <span className="font-heading text-lg font-bold text-primary">{stat.value}</span>
+                    <span className="font-body text-xs font-medium text-on-surface-variant">
                       {stat.label}
                     </span>
                   </span>
@@ -127,19 +135,19 @@ export default async function HomePage() {
       <section className="w-full bg-surface py-section-gap-mobile lg:py-section-gap">
         <div className="mx-auto grid max-w-container grid-cols-1 items-center gap-16 px-margin-mobile lg:grid-cols-2">
           <div className="relative flex aspect-square w-full items-center justify-center lg:h-[600px] lg:aspect-auto">
-            <div className="absolute left-0 top-0 h-3/4 w-3/4 overflow-hidden rounded-xl opacity-60 shadow-lg">
+            <div className="absolute left-0 top-0 h-3/4 w-3/4 overflow-hidden rounded-2xl border-2 border-white/80 opacity-90 shadow-xl transition-all hover:opacity-100">
               <Image
-                src={photos.aboutBack}
-                alt="A traditional Indian wedding ceremony in warm gold tones"
+                src="/about_mandap.jpg"
+                alt="A traditional Indian royal wedding mandap with marigold decor and sacred fire"
                 fill
                 sizes="(max-width: 1024px) 75vw, 450px"
                 className="object-cover"
               />
             </div>
-            <div className="absolute bottom-0 right-0 z-10 h-3/4 w-3/4 overflow-hidden rounded-xl shadow-2xl">
+            <div className="absolute bottom-0 right-0 z-10 h-3/4 w-3/4 overflow-hidden rounded-2xl border-4 border-white shadow-2xl ring-1 ring-black/10">
               <Image
-                src={photos.aboutFront}
-                alt="A newlywed couple in red and cream attire during their wedding ceremony"
+                src="/about_couple.jpg"
+                alt="A newlywed Indian couple in royal wedding attire smiling happily together"
                 fill
                 sizes="(max-width: 1024px) 75vw, 450px"
                 className="object-cover"

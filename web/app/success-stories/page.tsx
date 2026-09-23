@@ -45,7 +45,7 @@ export default async function SuccessStoriesPage() {
 
           <div className="relative mx-auto aspect-video w-full max-w-4xl overflow-hidden rounded-2xl shadow-float">
             <Image
-              src={media.video}
+              src={media.video || '/story_thumb.jpg'}
               alt="A couple sharing a moment at their wedding"
               fill
               sizes="(max-width: 1024px) 100vw, 900px"

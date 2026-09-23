@@ -8,7 +8,7 @@ type AuthState = {
   user: User | null;
   ready: boolean;
   signIn: (email: string, password: string) => Promise<void>;
-  signUp: (payload: Record<string, string>) => Promise<void>;
+  signUp: (payload: Record<string, any>) => Promise<void>;
   signOut: () => void;
   refresh: () => Promise<void>;
   updateProfile: (patch: { phone?: string; details?: Partial<MemberDetails> }) => Promise<User>;

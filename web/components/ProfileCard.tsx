@@ -36,13 +36,13 @@ export function ProfileCard({ profile }: { profile: Profile }) {
 
   return (
     <article className="overflow-hidden rounded-xl bg-surface shadow-card transition-transform duration-300 hover:-translate-y-1">
-      <div className="relative h-[240px] w-full">
+      <div className="relative h-[290px] sm:h-[320px] w-full overflow-hidden">
         <Image
           src={profile.photo}
           alt={`Portrait of ${profile.name}`}
           fill
           sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
-          className="object-cover"
+          className="object-cover object-top"
         />
         {profile.verified && (
           <div className="absolute right-3 top-3 flex items-center gap-1 rounded bg-surface/90 px-2 py-1 shadow-sm backdrop-blur-sm">

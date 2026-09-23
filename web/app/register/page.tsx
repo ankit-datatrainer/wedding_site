@@ -112,8 +112,12 @@ function PhotoStep({
     if (!files) return;
     const next: Photo[] = [];
     for (const file of Array.from(files)) {
-      if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) continue;
-      if (file.size > 5 * 1024 * 1024) continue;
+      const isImage =
+        file.type.startsWith('image/') ||
+        /\.(jpe?g|png|webp|gif|svg|avif|bmp|tiff)$/i.test(file.name);
+      const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
+      if (!isImage && !isPdf) continue;
+      if (file.size > 10 * 1024 * 1024) continue;
       next.push({ file, url: URL.createObjectURL(file) });
     }
     setPhotos((p) => [...p, ...next].slice(0, 6));
@@ -127,25 +131,41 @@ function PhotoStep({
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap gap-4">
-        {photos.map((p) => (
-          <div key={p.url} className="group relative h-28 w-28 overflow-hidden rounded-lg shadow-card">
-            {/* eslint-disable-next-line @next/next/no-img-element -- local blob preview, not a remote image next/image can optimize. */}
-            <img src={p.url} alt="Selected photo" className="h-full w-full object-cover" />
-            {p === photos[0] && (
-              <span className="absolute left-1 top-1 rounded bg-secondary px-1.5 py-0.5 font-body text-[10px] uppercase text-on-secondary">
-                Primary
-              </span>
-            )}
-            <button
-              type="button"
-              onClick={() => remove(p.url)}
-              aria-label="Remove photo"
-              className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-on-surface/70 text-surface opacity-0 transition-opacity group-hover:opacity-100"
+        {photos.map((p) => {
+          const isPdf =
+            p.file.type === 'application/pdf' || p.file.name.toLowerCase().endsWith('.pdf');
+          return (
+            <div
+              key={p.url}
+              className="group relative h-28 w-28 overflow-hidden rounded-lg shadow-card border border-outline-variant/40 bg-surface-container-low"
             >
-              <Icon name="close" className="text-[16px]" />
-            </button>
-          </div>
-        ))}
+              {isPdf ? (
+                <div className="flex h-full w-full flex-col items-center justify-center p-2 text-center">
+                  <Icon name="picture_as_pdf" className="text-[32px] text-error" />
+                  <span className="mt-1 line-clamp-1 font-body text-[10px] font-semibold text-on-surface">
+                    {p.file.name}
+                  </span>
+                </div>
+              ) : (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img src={p.url} alt="Selected photo" className="h-full w-full object-cover" />
+              )}
+              {p === photos[0] && (
+                <span className="absolute left-1 top-1 rounded bg-secondary px-1.5 py-0.5 font-body text-[10px] uppercase text-on-secondary shadow-sm">
+                  Primary
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={() => remove(p.url)}
+                aria-label="Remove photo"
+                className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-on-surface/70 text-surface opacity-0 transition-opacity group-hover:opacity-100"
+              >
+                <Icon name="close" className="text-[16px]" />
+              </button>
+            </div>
+          );
+        })}
         {photos.length < 6 && (
           <button
             type="button"
@@ -153,20 +173,20 @@ function PhotoStep({
             className="flex h-28 w-28 flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-outline-variant text-on-surface-variant transition-colors hover:border-secondary hover:text-secondary"
           >
             <Icon name="add_a_photo" className="text-[24px]" />
-            <span className="font-body text-label-md">Add Photo</span>
+            <span className="font-body text-label-md">Add Photo / PDF</span>
           </button>
         )}
       </div>
       <input
         ref={inputRef}
         type="file"
-        accept="image/jpeg,image/png,image/webp"
+        accept="image/jpeg,image/png,image/webp,image/gif,image/svg+xml,image/avif,image/bmp,image/tiff,application/pdf,.pdf"
         multiple
         className="sr-only"
         onChange={(e) => addFiles(e.target.files)}
       />
       <p className="font-body text-label-md text-on-surface-variant">
-        JPEG, PNG or WebP, up to 5MB each, up to 6 photos. They upload once your account is created.
+        Upload in JPG, PNG, WebP, GIF, SVG, AVIF, or PDF format (up to 10MB each).
       </p>
     </div>
   );
@@ -456,98 +476,134 @@ const STEPS: Step[] = [
   },
   {
     title: 'Physical & lifestyle',
-    subtitle: 'A few basics that matter most in a match.',
+    subtitle: 'A few basics that matter most in a match (optional).',
     icon: 'fitness_center',
+    optional: true,
     render: ({ form, setDetail }) => (
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-        <Field label="Height (cm)" type="number" min={120} max={230} value={form.details.heightCm ?? ''} onChange={(e) => setDetail('heightCm', e.target.value)} />
-        <Field label="Weight (kg)" type="number" min={30} max={200} value={form.details.weightKg ?? ''} onChange={(e) => setDetail('weightKg', e.target.value)} />
+        <Field label="Height (cm)" type="number" min={120} max={230} placeholder="e.g. 175" value={form.details.heightCm ?? ''} onChange={(e) => setDetail('heightCm', e.target.value)} />
+        <Field label="Weight (kg)" type="number" min={30} max={200} placeholder="e.g. 68" value={form.details.weightKg ?? ''} onChange={(e) => setDetail('weightKg', e.target.value)} />
         <Select label="Marital Status" options={['Never Married', 'Divorced', 'Widowed', 'Awaiting Divorce']} value={form.details.maritalStatus ?? ''} onChange={(e) => setDetail('maritalStatus', e.target.value)} />
         <Select label="Diet" options={['Vegetarian', 'Non-Vegetarian', 'Eggetarian', 'Vegan']} value={form.details.diet ?? ''} onChange={(e) => setDetail('diet', e.target.value)} />
         <Select label="Smoking" options={['No', 'Occasionally', 'Yes']} value={form.details.smoking ?? ''} onChange={(e) => setDetail('smoking', e.target.value)} />
         <Select label="Drinking" options={['No', 'Occasionally', 'Yes']} value={form.details.drinking ?? ''} onChange={(e) => setDetail('drinking', e.target.value)} />
       </div>
     ),
-    validate: (f) =>
-      f.details.heightCm && f.details.maritalStatus && f.details.diet
-        ? null
-        : 'Please fill in height, marital status and diet.',
   },
   {
     title: 'Religion & horoscope',
-    subtitle: 'Religion and community carry the most weight in your matches.',
+    subtitle: 'Religion and community carry weight in your matches (optional).',
     icon: 'auto_awesome',
+    optional: true,
     render: ({ form, setDetail }) => (
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
         <Field label="Religion" placeholder="e.g. Hindu" value={form.details.religion ?? ''} onChange={(e) => setDetail('religion', e.target.value)} />
         <Field label="Community / Caste" placeholder="e.g. Brahmin" value={form.details.community ?? ''} onChange={(e) => setDetail('community', e.target.value)} />
-        <Field label="Mother Tongue" value={form.details.motherTongue ?? ''} onChange={(e) => setDetail('motherTongue', e.target.value)} />
+        <Field label="Mother Tongue" placeholder="e.g. Hindi" value={form.details.motherTongue ?? ''} onChange={(e) => setDetail('motherTongue', e.target.value)} />
         <Field label="Gothram (optional)" value={form.details.gothram ?? ''} onChange={(e) => setDetail('gothram', e.target.value)} />
         <Select label="Manglik (optional)" options={['Yes', 'No', "Don't Know"]} value={form.details.manglik ?? ''} onChange={(e) => setDetail('manglik', e.target.value)} />
         <Field label="Rashi (optional)" value={form.details.rashi ?? ''} onChange={(e) => setDetail('rashi', e.target.value)} />
         <Field label="Nakshatra (optional)" value={form.details.nakshatra ?? ''} onChange={(e) => setDetail('nakshatra', e.target.value)} />
       </div>
     ),
-    validate: (f) => (f.details.religion && f.details.community ? null : 'Please fill in religion and community.'),
   },
   {
     title: 'Where do you live?',
-    subtitle: 'Location matters — many members prefer to search nearby.',
+    subtitle: 'Location matters — many members prefer to search nearby (optional).',
     icon: 'location_on',
+    optional: true,
     render: ({ form, setDetail }) => (
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-        <Field label="Country" value={form.details.country ?? ''} onChange={(e) => setDetail('country', e.target.value)} />
-        <Field label="State" value={form.details.state ?? ''} onChange={(e) => setDetail('state', e.target.value)} />
-        <Field label="City" value={form.details.city ?? ''} onChange={(e) => setDetail('city', e.target.value)} />
+        <Field label="Country" placeholder="e.g. India" value={form.details.country ?? ''} onChange={(e) => setDetail('country', e.target.value)} />
+        <Field label="State" placeholder="e.g. Maharashtra" value={form.details.state ?? ''} onChange={(e) => setDetail('state', e.target.value)} />
+        <Field label="City" placeholder="e.g. Mumbai" value={form.details.city ?? ''} onChange={(e) => setDetail('city', e.target.value)} />
         <Field label="PIN Code (optional)" value={form.details.pincode ?? ''} onChange={(e) => setDetail('pincode', e.target.value)} />
         <div className="sm:col-span-2">
           <Field label="Address (optional)" value={form.details.address ?? ''} onChange={(e) => setDetail('address', e.target.value)} />
         </div>
       </div>
     ),
-    validate: (f) =>
-      f.details.country && f.details.state && f.details.city ? null : 'Please fill in country, state and city.',
   },
   {
     title: 'Education & career',
-    subtitle: 'What you do says a lot about where you are headed.',
+    subtitle: 'What you do says a lot about where you are headed (optional).',
     icon: 'school',
+    optional: true,
     render: ({ form, setDetail }) => (
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-        <Field label="Highest Education" placeholder="e.g. B.Tech, IIT Delhi" value={form.details.highestEducation ?? ''} onChange={(e) => setDetail('highestEducation', e.target.value)} />
+        <Field label="Highest Education" placeholder="e.g. B.Tech, IIT Bombay" value={form.details.highestEducation ?? ''} onChange={(e) => setDetail('highestEducation', e.target.value)} />
         <Field label="College / University (optional)" value={form.details.college ?? ''} onChange={(e) => setDetail('college', e.target.value)} />
-        <Field label="Occupation" placeholder="e.g. Software Engineer" value={form.details.occupation ?? ''} onChange={(e) => setDetail('occupation', e.target.value)} />
+        <Field label="Occupation" placeholder="e.g. Software Engineer or Business" value={form.details.occupation ?? ''} onChange={(e) => setDetail('occupation', e.target.value)} />
         <Field label="Employer (optional)" value={form.details.employer ?? ''} onChange={(e) => setDetail('employer', e.target.value)} />
-        <Field label="Annual Income (optional)" placeholder="e.g. 12 LPA" value={form.details.annualIncome ?? ''} onChange={(e) => setDetail('annualIncome', e.target.value)} />
+        <Field label="Annual Income (optional)" placeholder="e.g. 15 LPA" value={form.details.annualIncome ?? ''} onChange={(e) => setDetail('annualIncome', e.target.value)} />
       </div>
     ),
-    validate: (f) => (f.details.highestEducation && f.details.occupation ? null : 'Please fill in education and occupation.'),
   },
   {
     title: 'Family details',
     subtitle: 'A marriage joins two families — help us represent yours.',
     icon: 'diversity_3',
+    optional: true,
     render: ({ form, setDetail }) => (
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
         <Select label="Family Type" options={['Nuclear', 'Joint']} value={form.details.familyType ?? ''} onChange={(e) => setDetail('familyType', e.target.value)} />
         <Select label="Family Status" options={['Middle Class', 'Upper Middle Class', 'Rich', 'Affluent']} value={form.details.familyStatus ?? ''} onChange={(e) => setDetail('familyStatus', e.target.value)} />
         <Select label="Family Values" options={['Traditional', 'Moderate', 'Liberal']} value={form.details.familyValues ?? ''} onChange={(e) => setDetail('familyValues', e.target.value)} />
-        <Field label="Siblings (optional)" placeholder="e.g. One younger sister" value={form.details.siblings ?? ''} onChange={(e) => setDetail('siblings', e.target.value)} />
-        <Field label="Father's Name (optional)" value={form.details.fatherName ?? ''} onChange={(e) => setDetail('fatherName', e.target.value)} />
-        <Field label="Father's Occupation (optional)" value={form.details.fatherOccupation ?? ''} onChange={(e) => setDetail('fatherOccupation', e.target.value)} />
-        <Field label="Mother's Name (optional)" value={form.details.motherName ?? ''} onChange={(e) => setDetail('motherName', e.target.value)} />
-        <Field label="Mother's Occupation (optional)" value={form.details.motherOccupation ?? ''} onChange={(e) => setDetail('motherOccupation', e.target.value)} />
+        <Field label="Siblings (optional)" placeholder="e.g. One sister, one brother" value={form.details.siblings ?? ''} onChange={(e) => setDetail('siblings', e.target.value)} />
+        
+        {/* Father's Details */}
+        <Field label="Father's Name (optional)" placeholder="e.g. Rajesh Sharma" value={form.details.fatherName ?? ''} onChange={(e) => setDetail('fatherName', e.target.value)} />
+        <Field label="Father's Email (optional)" type="email" placeholder="father@example.com" hint="We will send a confirmation notification to keep your family informed." value={form.details.fatherEmail ?? ''} onChange={(e) => setDetail('fatherEmail', e.target.value)} />
+        <div className="sm:col-span-2">
+          <Field label="Father's Occupation (optional)" placeholder="e.g. Senior Executive, Businessman" value={form.details.fatherOccupation ?? ''} onChange={(e) => setDetail('fatherOccupation', e.target.value)} />
+        </div>
+
+        {/* Mother's Details */}
+        <Field label="Mother's Name (optional)" placeholder="e.g. Sunita Sharma" value={form.details.motherName ?? ''} onChange={(e) => setDetail('motherName', e.target.value)} />
+        <Field label="Mother's Email (optional)" type="email" placeholder="mother@example.com" hint="We will send a confirmation notification to keep your family informed." value={form.details.motherEmail ?? ''} onChange={(e) => setDetail('motherEmail', e.target.value)} />
+        <div className="sm:col-span-2">
+          <Field label="Mother's Occupation (optional)" placeholder="e.g. Homemaker, Professor" value={form.details.motherOccupation ?? ''} onChange={(e) => setDetail('motherOccupation', e.target.value)} />
+        </div>
       </div>
     ),
-    validate: (f) =>
-      f.details.familyType && f.details.familyStatus && f.details.familyValues
-        ? null
-        : 'Please fill in family type, status and values.',
+  },
+  {
+    title: 'Reference from biodata',
+    subtitle: 'Optional reference details from your biodata or matrimonial referee.',
+    icon: 'badge',
+    optional: true,
+    render: ({ form, setDetail }) => (
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+        <Field
+          label="Reference Person's Name (optional)"
+          placeholder="e.g. Ramesh Chandra, Mr. S.K. Gupta"
+          value={form.details.referenceName ?? ''}
+          onChange={(e) => setDetail('referenceName', e.target.value)}
+        />
+        <Field
+          label="Reference Phone Number (optional)"
+          type="tel"
+          placeholder="e.g. +91 98765 43210"
+          value={form.details.referencePhone ?? ''}
+          onChange={(e) => setDetail('referencePhone', e.target.value)}
+        />
+        <div className="sm:col-span-2">
+          <Field
+            label="Who referred you / Relation (optional)"
+            placeholder="e.g. Family Friend, Uncle, Community Elder, Colleague"
+            hint="Describe who referred you or how you are connected to the reference person."
+            value={form.details.referredBy ?? ''}
+            onChange={(e) => setDetail('referredBy', e.target.value)}
+          />
+        </div>
+      </div>
+    ),
   },
   {
     title: 'Tell us about yourself',
-    subtitle: 'This is the first thing a match reads — make it genuine.',
+    subtitle: 'This is what a match reads — make it genuine (optional).',
     icon: 'edit_note',
+    optional: true,
     render: ({ form, setDetail }) => (
       <div className="flex flex-col gap-5">
         <TextArea
@@ -564,12 +620,10 @@ const STEPS: Step[] = [
         />
       </div>
     ),
-    validate: (f) =>
-      (f.details.aboutMe ?? '').trim().length >= 20 ? null : 'Please write at least a couple of sentences about yourself.',
   },
   {
-    title: 'Add your photos',
-    subtitle: 'Profiles with a photo get far more attention. Optional, but recommended.',
+    title: 'Add your photos or documents',
+    subtitle: 'Upload profile pictures or biodata documents in JPG, PNG, or PDF format. Optional.',
     icon: 'add_a_photo',
     optional: true,
     render: ({ photos, setPhotos }) => <PhotoStep photos={photos} setPhotos={setPhotos} />,
@@ -580,7 +634,7 @@ const STEPS: Step[] = [
     icon: 'lock',
     render: ({ form, set, showPassword, setShowPassword }) => (
       <div className="flex flex-col gap-5">
-        <Field label="Phone Number" type="tel" placeholder="+91 98765 43210" value={form.phone} onChange={(e) => set('phone', e.target.value)} />
+        <Field label="Phone Number (optional)" type="tel" placeholder="+91 98765 43210" value={form.phone} onChange={(e) => set('phone', e.target.value)} />
         <Field label="Email Address" type="email" autoComplete="email" placeholder="you@example.com" value={form.email} onChange={(e) => set('email', e.target.value)} />
         <label className="flex flex-col gap-2">
           <span className="font-body text-label-md text-on-surface-variant">Password</span>
@@ -606,7 +660,6 @@ const STEPS: Step[] = [
       </div>
     ),
     validate: (f) => {
-      if (!f.phone.trim()) return 'Please enter a phone number.';
       if (!/^\S+@\S+\.\S+$/.test(f.email)) return 'Please enter a valid email address.';
       if (f.password.length < 8) return 'Password must be at least 8 characters.';
       return null;
@@ -733,17 +786,21 @@ export default function RegisterPage() {
         lastName: form.lastName,
         gender: form.gender,
         dob: form.dob,
+        phone: form.phone,
         email: form.email,
         password: form.password,
+        fatherEmail: form.details.fatherEmail,
+        motherEmail: form.details.motherEmail,
+        details: form.details,
       });
 
       // Everything below runs with the account already created. If any of
       // it fails, the account and its core identity are safe either way —
-      // the member can finish the rest from My Profile.
+      // the member can finish the rest from Dashboard / Profile.
       try {
         await updateProfile({ phone: form.phone, details: form.details });
       } catch {
-        /* details can be completed later from /onboarding */
+        /* details can be completed later from /dashboard */
       }
 
       if (photos.length) {
@@ -760,7 +817,7 @@ export default function RegisterPage() {
         }
       }
 
-      router.push('/matches');
+      router.push('/dashboard');
     } catch (err) {
       setError((err as Error).message);
       setPending(false);

@@ -319,6 +319,13 @@ export default function OnboardingPage() {
             onChange={(e) => set('fatherOccupation', e.target.value)}
           />
           <Field
+            label="Father's Email"
+            type="email"
+            value={details.fatherEmail ?? ''}
+            onChange={(e) => set('fatherEmail', e.target.value)}
+            placeholder="father@example.com"
+          />
+          <Field
             label="Mother's Name"
             value={details.motherName ?? ''}
             onChange={(e) => set('motherName', e.target.value)}
@@ -327,6 +334,13 @@ export default function OnboardingPage() {
             label="Mother's Occupation"
             value={details.motherOccupation ?? ''}
             onChange={(e) => set('motherOccupation', e.target.value)}
+          />
+          <Field
+            label="Mother's Email"
+            type="email"
+            value={details.motherEmail ?? ''}
+            onChange={(e) => set('motherEmail', e.target.value)}
+            placeholder="mother@example.com"
           />
           <Field
             label="Siblings"
@@ -352,6 +366,30 @@ export default function OnboardingPage() {
             value={details.familyValues ?? ''}
             onChange={(e) => set('familyValues', e.target.value)}
           />
+        </Section>
+
+        <Section icon="badge" title="Reference from Biodata">
+          <Field
+            label="Reference Person's Name"
+            value={details.referenceName ?? ''}
+            onChange={(e) => set('referenceName', e.target.value)}
+            placeholder="e.g. Ramesh Chandra, Mr. S.K. Gupta"
+          />
+          <Field
+            label="Reference Phone Number"
+            type="tel"
+            value={details.referencePhone ?? ''}
+            onChange={(e) => set('referencePhone', e.target.value)}
+            placeholder="e.g. +91 98765 43210"
+          />
+          <div className="sm:col-span-2">
+            <Field
+              label="Who referred you / Relation"
+              value={details.referredBy ?? ''}
+              onChange={(e) => set('referredBy', e.target.value)}
+              placeholder="e.g. Family Friend, Uncle, Community Elder, Colleague"
+            />
+          </div>
         </Section>
 
         <Section icon="edit_note" title="About &amp; Partner Preferences">

@@ -18,8 +18,16 @@ fs.mkdirSync(uploadsRoot, { recursive: true });
 
 const ALLOWED = new Map([
   ['image/jpeg', '.jpg'],
+  ['image/jpg', '.jpg'],
   ['image/png', '.png'],
   ['image/webp', '.webp'],
+  ['image/gif', '.gif'],
+  ['image/svg+xml', '.svg'],
+  ['image/avif', '.avif'],
+  ['image/bmp', '.bmp'],
+  ['image/x-ms-bmp', '.bmp'],
+  ['image/tiff', '.tiff'],
+  ['application/pdf', '.pdf'],
 ]);
 
 const storage = multer.diskStorage({
@@ -29,7 +37,11 @@ const storage = multer.diskStorage({
     cb(null, dir);
   },
   filename(_req, file, cb) {
-    const ext = ALLOWED.get(file.mimetype) || '.jpg';
+    let ext = ALLOWED.get(file.mimetype);
+    if (!ext) {
+      const match = (file.originalname || '').match(/\.([a-z0-9]+)$/i);
+      ext = match ? `.${match[1].toLowerCase()}` : '.jpg';
+    }
     cb(null, `${Date.now()}-${crypto.randomBytes(6).toString('hex')}${ext}`);
   },
 });
@@ -38,8 +50,16 @@ const upload = multer({
   storage,
   limits: { fileSize: config.maxUploadMb * 1024 * 1024 },
   fileFilter(_req, file, cb) {
-    if (!ALLOWED.has(file.mimetype)) {
-      return cb(new Error('Only JPEG, PNG or WebP photos are allowed.'));
+    const isAllowedMime = ALLOWED.has(file.mimetype);
+    const hasAllowedExt = /\.(jpe?g|png|webp|gif|svg|avif|bmp|tiff|pdf)$/i.test(
+      file.originalname || ''
+    );
+    if (!isAllowedMime && !hasAllowedExt) {
+      return cb(
+        new Error(
+          'Supported formats: JPG, PNG, WebP, GIF, SVG, AVIF, BMP, TIFF, and PDF.'
+        )
+      );
     }
     cb(null, true);
   },

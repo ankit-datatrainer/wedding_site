@@ -59,7 +59,7 @@ export default async function ProfilePage({ params }: { params: Promise<{ id: st
                 fill
                 sizes="(max-width: 1024px) 100vw, 420px"
                 priority
-                className="object-cover"
+                className="object-cover object-top"
               />
               {profile.verified && (
                 <div className="absolute left-4 top-4 flex items-center gap-1 rounded bg-surface/90 px-3 py-1.5 shadow-sm backdrop-blur-sm">

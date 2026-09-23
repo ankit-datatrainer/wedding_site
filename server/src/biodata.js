@@ -79,8 +79,10 @@ const LABELS = [
 
   { field: 'fatherName', labels: ["father's name", 'father name', 'fathers name', 'father'] },
   { field: 'fatherOccupation', labels: ["father's occupation", 'father occupation', 'fathers occupation', "father's profession"] },
+  { field: 'fatherEmail', labels: ["father's email", 'father email', 'fathers email', "father's e-mail", 'father e-mail'] },
   { field: 'motherName', labels: ["mother's name", 'mother name', 'mothers name', 'mother'] },
   { field: 'motherOccupation', labels: ["mother's occupation", 'mother occupation', 'mothers occupation', "mother's profession"] },
+  { field: 'motherEmail', labels: ["mother's email", 'mother email', 'mothers email', "mother's e-mail", 'mother e-mail'] },
   { field: 'siblings', labels: ['siblings', 'brothers', 'sisters', 'brothers/sisters', 'brother/sister', 'no of siblings', 'siblings details', 'younger brother', 'elder brother', 'younger sister', 'elder sister', 'brother', 'sister'] },
   { field: 'familyType', labels: ['family type', 'type of family'] },
   { field: 'familyStatus', labels: ['family status'] },
@@ -91,6 +93,10 @@ const LABELS = [
 
   { field: 'aboutMe', labels: ['about me', 'about', 'about myself', 'brief', 'introduction', 'hobbies', 'interests'] },
   { field: 'partnerExpectations', labels: ['partner expectations', 'partner preference', 'partner preferences', 'expectations', 'looking for', 'desired partner', 'expectations from partner'] },
+
+  { field: 'referenceName', labels: ['reference name', 'ref name', 'reference person', 'referee name', 'reference', 'ref'] },
+  { field: 'referencePhone', labels: ['reference phone', 'reference contact', 'reference mobile', 'ref phone', 'ref mobile', 'referee contact', 'reference contact no'] },
+  { field: 'referredBy', labels: ['referred by', 'reference relation', 'referral', 'who referred you', 'ref relation', 'reference relationship', 'reference details'] },
 ];
 
 const LABEL_INDEX = LABELS.flatMap(({ field, labels }) =>
@@ -707,6 +713,15 @@ export function parseBiodataText(text) {
   str('aboutMe', 2000);
   str('partnerExpectations', 2000);
 
+  /* reference from biodata */
+  if (raw.referenceName) set('referenceName', cleanName(raw.referenceName));
+  if (raw.referencePhone) {
+    const digits = String(raw.referencePhone).replace(/[^\d+]/g, '');
+    if (digits.replace(/\D/g, '').length >= 7) set('referencePhone', digits.slice(0, 20));
+    else str('referencePhone', 30);
+  }
+  str('referredBy', 150);
+
   // "About Abhivyakt" reads as label "About" + value starting with the name,
   // so the name ends up duplicated at the head of the text. Drop the stray
   // copy rather than showing the member "Abhivyakt Abhivyakt is a…".
@@ -757,8 +772,9 @@ const DETAIL_KEYS = [
   'motherTongue', 'religion', 'community', 'gothram', 'manglik', 'rashi', 'nakshatra',
   'country', 'state', 'city', 'address', 'pincode',
   'highestEducation', 'college', 'occupation', 'employer', 'annualIncome',
-  'fatherName', 'fatherOccupation', 'motherName', 'motherOccupation', 'siblings',
+  'fatherName', 'fatherOccupation', 'fatherEmail', 'motherName', 'motherOccupation', 'motherEmail', 'siblings',
   'familyType', 'familyStatus', 'familyValues',
+  'referenceName', 'referencePhone', 'referredBy',
   'aboutMe', 'partnerExpectations',
 ];
 

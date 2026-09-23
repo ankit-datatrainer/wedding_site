@@ -255,6 +255,37 @@ export function scoreMatch(viewer, candidate) {
 
   if (candidate.verified) score += 5;
 
+  // Partner Preferences evaluation (businessman vs job, vegetarian, same caste)
+  const prefs = d.partnerPreferences || {};
+
+  if (prefs.professionType === 'businessman' && candidate.profession) {
+    const isBusiness = /business|entrepreneur|founder|director|owner|trader|merchant|partner|consultant|firm/i.test(
+      candidate.profession
+    );
+    if (isBusiness) score += 20;
+  } else if (prefs.professionType === 'job' && candidate.profession) {
+    const isJob = /engineer|architect|doctor|physician|surgeon|manager|analyst|officer|banker|accountant|scientist|professor|designer|developer/i.test(
+      candidate.profession
+    );
+    if (isJob) score += 20;
+  }
+
+  if (prefs.diet === 'vegetarian') {
+    if (candidate.diet && candidate.diet.toLowerCase() === 'vegetarian') score += 15;
+  } else if (prefs.diet === 'non_vegetarian') {
+    if (candidate.diet && candidate.diet.toLowerCase() !== 'vegetarian') score += 15;
+  }
+
+  if (prefs.sameCaste) {
+    if (
+      d.community &&
+      candidate.community &&
+      d.community.toLowerCase() === candidate.community.toLowerCase()
+    ) {
+      score += 20;
+    }
+  }
+
   return Math.min(100, score);
 }
 
